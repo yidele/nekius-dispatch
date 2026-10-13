@@ -327,3 +327,80 @@ revoke execute on function generate_recurring_requests() from public, anon;
 grant execute on function generate_recurring_requests() to authenticated;
 create extension if not exists pg_cron;
 select cron.schedule('kvisa-recurring-requests', '5 * * * *', 'select public.generate_recurring_requests()');
+
+-- =========================================================
+-- 2026-10-13: repeat patterns, one-date changes and skips
+-- (generate_recurring_requests above is superseded by the version below)
+-- =========================================================
+alter table recurring_requests add column repeat text not null default 'weekly' check (repeat in ('weekly','monthly'));
+alter table recurring_requests add column interval_weeks smallint not null default 1 check (interval_weeks between 1 and 8);
+alter table recurring_requests add column start_date date not null default ((now() at time zone 'America/New_York')::date);
+alter table recurring_requests add column month_weeks smallint[] not null default '{}'; -- 1..4 = 1st..4th, 5 = last
+
+create table recurring_overrides (
+  recurring_id bigint not null references recurring_requests(id) on delete cascade,
+  run_date date not null,
+  changes jsonb not null default '{}',   -- e.g. {"volunteer_id": "...", "pickup_driver_id": null}
+  skip boolean not null default false,   -- editors only (overrides_guard)
+  updated_at timestamptz not null default now(),
+  primary key (recurring_id, run_date)
+);
+alter table recurring_overrides enable row level security;
+create policy overrides_select_known on recurring_overrides for select to authenticated using (is_known_user());
+create policy overrides_insert_known on recurring_overrides for insert to authenticated with check (is_known_user());
+create policy overrides_update_known on recurring_overrides for update to authenticated using (is_known_user()) with check (is_known_user());
+
+create function overrides_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if not is_editor() and new.skip is distinct from (case when tg_op = 'UPDATE' then old.skip else false end) then
+    raise exception 'Only an editor can skip a date.';
+  end if;
+  new.updated_at := now();
+  return new;
+end;
+$$;
+create trigger overrides_guard before insert or update on recurring_overrides for each row execute function overrides_guard();
+-- recurring_guard() also protects repeat, interval_weeks, start_date and month_weeks (editor-only)
+
+create function recurring_occurs(rr recurring_requests, d date) returns boolean language plpgsql immutable as $$
+declare n int; wk int;
+begin
+  if d < rr.start_date or not (extract(dow from d)::int = any(rr.days)) then return false; end if;
+  if rr.repeat = 'monthly' then
+    n := (extract(day from d)::int - 1) / 7 + 1;
+    return n = any(rr.month_weeks) or (5 = any(rr.month_weeks) and extract(month from d + 7) <> extract(month from d));
+  end if;
+  wk := ((d - extract(dow from d)::int) - (rr.start_date - extract(dow from rr.start_date)::int)) / 7;
+  return wk % rr.interval_weeks = 0;
+end;
+$$;
+
+create or replace function generate_recurring_requests() returns integer language plpgsql security definer set search_path = public as $$
+declare
+  rr recurring_requests%rowtype; ov record; d date; new_id bigint; made integer := 0; ch jsonb;
+  today date := (now() at time zone 'America/New_York')::date;
+begin
+  for rr in select * from recurring_requests where active loop
+    foreach d in array array[today, today + 1] loop
+      if recurring_occurs(rr, d) then
+        select * into ov from recurring_overrides where recurring_id = rr.id and run_date = d;
+        if coalesce(ov.skip, false) then continue; end if;
+        ch := coalesce(ov.changes, '{}');
+        insert into recurring_runs (recurring_id, run_date) values (rr.id, d) on conflict do nothing;
+        if found then
+          insert into requests (client_id, volunteer_id, pickup_driver_id, return_driver_id, bags, requested_for, notes, status, created_by, recurring_id)
+          values (rr.client_id,
+                  case when ch ? 'volunteer_id' then (ch->>'volunteer_id')::uuid else rr.volunteer_id end,
+                  case when ch ? 'pickup_driver_id' then (ch->>'pickup_driver_id')::uuid else rr.pickup_driver_id end,
+                  case when ch ? 'return_driver_id' then (ch->>'return_driver_id')::uuid else rr.return_driver_id end,
+                  rr.bags, (d + rr.time_of_day) at time zone 'America/New_York', rr.notes, 'open', rr.created_by, rr.id)
+          returning id into new_id;
+          update recurring_runs set request_id = new_id where recurring_id = rr.id and run_date = d;
+          made := made + 1;
+        end if;
+      end if;
+    end loop;
+  end loop;
+  return made;
+end;
+$$;

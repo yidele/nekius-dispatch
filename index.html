@@ -295,7 +295,8 @@ const state = {
   toast: null,
   authMode: 'login',      // login | signup
   authError: '', authInfo: '',
-  clients: [], volunteers: [], drivers: [], requests: [], profiles: [], invites: [], recurring: [],
+  authForm: {},           // what's typed on Log in / Sign up, so a re-render doesn't wipe it
+  clients: [], volunteers: [], drivers: [], requests: [], profiles: [], invites: [], recurring: [], overrides: [],
   settings: { mashilach_address:'', mashilach_note:'', post_message_template:{before:'',between:' to ',after:''},
     driver_message_pickup_template:'Laundry pickup — Request #{request_id}\n\nPick up from: {client_name}\n{client_address}\n{client_note}\nBags: {bags}\nWhen: {requested_for}\n\nDeliver to: {volunteer_name}\n{volunteer_address}\n{volunteer_note}',
     driver_message_return_template:'Laundry return — Request #{request_id}\n\nPick up from: {volunteer_name}\n{volunteer_address}\n{volunteer_note}\n\nDeliver to: {client_name}\n{client_address}\n{client_note}' },
@@ -472,7 +473,7 @@ function volunteerReadiness(vol){
 async function loadAll(){
   // make sure today's and tomorrow's recurring requests exist (the database also does this every hour)
   try{ await sb.rpc('generate_recurring_requests'); }catch(_){}
-  const [c,v,d,r,s,p,inv,rec] = await Promise.all([
+  const [c,v,d,r,s,p,inv,rec,ov] = await Promise.all([
     sb.from('clients').select('*').order('name'),
     sb.from('volunteers').select('*').order('name'),
     sb.from('drivers').select('*').order('name'),
@@ -481,11 +482,12 @@ async function loadAll(){
     sb.from('profiles').select('*').order('email'),
     sb.from('invites').select('*').order('created_at'),
     sb.from('recurring_requests').select('*').order('id'),
+    sb.from('recurring_overrides').select('*'),
   ]);
   const failed = [c,v,d,r,s].find(x=>x.error);
   if(failed) showToast('Could not load data: ' + failed.error.message);
   state.clients = c.data||[]; state.volunteers = v.data||[]; state.drivers = d.data||[];
-  state.requests = r.data||[]; state.profiles = p.data||[]; state.invites = inv.data||[]; state.recurring = rec.data||[];
+  state.requests = r.data||[]; state.profiles = p.data||[]; state.invites = inv.data||[]; state.recurring = rec.data||[]; state.overrides = ov.data||[];
   if(s.data) state.settings = { ...state.settings, ...s.data };
   state.loading = false;
   render();
@@ -592,9 +594,9 @@ function authScreen(){
   <div class="main" style="max-width:420px;">
     <div class="section-title">${isLogin?'Log in':'Sign up'}</div>
     <div class="card">
-      ${!isLogin ? `<div class="field"><label>Your name</label><input id="auth-name" autocomplete="name"></div>` : ''}
-      <div class="field"><label>Email</label><input id="auth-email" type="email" autocomplete="username"></div>
-      <div class="field"><label>Password</label><input id="auth-password" type="password" autocomplete="${isLogin?'current-password':'new-password'}"></div>
+      ${!isLogin ? `<div class="field"><label>Your name</label><input id="auth-name" autocomplete="name" value="${esc(state.authForm['auth-name']||'')}"></div>` : ''}
+      <div class="field"><label>Email</label><input id="auth-email" type="email" autocomplete="username" value="${esc(state.authForm['auth-email']||'')}"></div>
+      <div class="field"><label>Password</label><input id="auth-password" type="password" autocomplete="${isLogin?'current-password':'new-password'}" value="${esc(state.authForm['auth-password']||'')}"></div>
       ${state.authError ? `<div class="error-text">${esc(state.authError)}</div>` : ''}
       ${state.authInfo ? `<div style="color:var(--green);font-size:13px;margin-top:6px;">${esc(state.authInfo)}</div>` : ''}
       <div style="margin-top:16px;" class="btn btn-primary" data-action="${isLogin?'do-login':'do-signup'}">${isLogin?'LOG IN':'SIGN UP'}</div>
@@ -1005,6 +1007,31 @@ function driverDetail(){
 function isEditor(){ return state.profile?.role === 'editor'; }
 function fmtTime(t){ if(!t) return ''; const [h,m] = t.split(':').map(Number); return new Date(2000,0,1,h,m).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
 function daysText(days){ return (days||[]).slice().sort().map(i=>DAY_SHORT[i]).join(', '); }
+function ymd(d){ const x = new Date(d); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`; }
+const ORDINAL = {1:'1st', 2:'2nd', 3:'3rd', 4:'4th', 5:'Last'};
+// same rule as recurring_occurs() in the database
+function occursOn(t, day){
+  const d = localDay(day);
+  if(t.start_date && d < localDay(t.start_date + 'T00:00')) return false;
+  if(!(t.days||[]).includes(d.getDay())) return false;
+  if(t.repeat === 'monthly'){
+    const n = Math.floor((d.getDate()-1)/7) + 1;
+    const next = new Date(d); next.setDate(d.getDate()+7);
+    return (t.month_weeks||[]).includes(n) || ((t.month_weeks||[]).includes(5) && next.getMonth() !== d.getMonth());
+  }
+  const start = localDay((t.start_date || ymd(new Date())) + 'T00:00');
+  const weekOf = x => { const y = new Date(x); y.setDate(y.getDate() - y.getDay()); return y; };
+  const weeks = Math.round((weekOf(d) - weekOf(start)) / (7*86400000));
+  return weeks % (t.interval_weeks || 1) === 0;
+}
+function describeRepeat(t){
+  const days = daysText(t.days) || '—';
+  if(t.repeat === 'monthly') return `${(t.month_weeks||[]).slice().sort().map(n=>ORDINAL[n]).join(' & ') || '—'} ${days} of the month`;
+  return (t.interval_weeks||1) > 1 ? `Every ${t.interval_weeks} weeks on ${days}` : `Every ${days}`;
+}
+function overrideFor(t, day){ return state.overrides.find(o=>o.recurring_id===t.id && o.run_date===ymd(day)); }
+// who is set for one date: the one-time change if there is one, otherwise the usual person
+function effectiveFor(t, day, field){ const o = overrideFor(t, day); return o && field in (o.changes||{}) ? o.changes[field] : t[field]; }
 // the request already created from a recurring one for a given day (if any)
 function generatedFor(t, day){ return state.requests.find(r=>r.recurring_id===t.id && r.requested_for && localDay(r.requested_for).getTime()===day.getTime()); }
 function recurringCard(t){
@@ -1016,7 +1043,7 @@ function recurringCard(t){
   const missing = [!vol && assign('volunteer_id','Assign Volunteer', true), !pd && assign('pickup_driver_id','Assign Pickup Driver'), !rd && assign('return_driver_id','Assign Return Driver')].filter(Boolean).join('');
   return `<div class="card req-card" style="border-left-color:${t.active ? 'var(--primary)' : 'var(--line)'};${t.active ? '' : 'opacity:.65;'}">
     <div class="req-head">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span class="req-id">${icon('repeat')} Every ${esc(daysText(t.days)) || '—'}</span><span class="sub">${fmtTime(t.time_of_day)}</span>${t.active ? '' : '<span class="tag gray">Paused</span>'}</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span class="req-id">${icon('repeat')} ${esc(describeRepeat(t))}</span><span class="sub">${fmtTime(t.time_of_day)}</span>${t.active ? '' : '<span class="tag gray">Paused</span>'}</div>
       ${isEditor() ? `<div class="req-tools">
         <button class="icon-only" title="Edit" data-action="open-modal" data-modal="recurringForm" data-id="${t.id}">${ICON_EDIT}</button>
         <button class="icon-only danger" title="Delete" data-action="delete-recurring" data-id="${t.id}">${ICON_TRASH}</button>
@@ -1037,17 +1064,18 @@ function recurring(){
   const week = [];
   for(let i=0;i<7;i++){
     const day = new Date(today); day.setDate(today.getDate()+i);
-    const items = state.recurring.filter(t=>t.active && (t.days||[]).includes(day.getDay()))
+    const items = state.recurring.filter(t=>t.active && occursOn(t, day))
       .sort((a,b)=> (a.time_of_day||'').localeCompare(b.time_of_day||''));
     if(items.length) week.push({day, items});
   }
   const row = (t, day) => {
-    const c = byId(state.clients, t.client_id), v = byId(state.volunteers, t.volunteer_id);
-    const made = generatedFor(t, day);
-    return `<div class="req-row" ${made ? `data-action="go-request" data-id="${made.id}"` : ''} style="${made ? '' : 'cursor:default;'}">
+    const c = byId(state.clients, t.client_id), v = byId(state.volunteers, effectiveFor(t, day, 'volunteer_id'));
+    const made = generatedFor(t, day), ov = overrideFor(t, day);
+    const changed = ov && Object.keys(ov.changes||{}).length;
+    return `<div class="req-row" ${made ? `data-action="go-request" data-id="${made.id}"` : `data-action="open-modal" data-modal="occurrence" data-id="${t.id}" data-date="${ymd(day)}"`} style="${ov?.skip ? 'opacity:.55;' : ''}">
       <span class="sub" style="min-width:62px;">${fmtTime(t.time_of_day)}</span>
       <span class="row-text"><b>${esc(c?.name||'—')}</b>${v ? ` &middot; ${esc(v.name)}` : ''}</span>
-      ${made ? `<span class="tag">#${made.id} in Dispatch</span>` : `<span class="tag gray">Not yet</span>`}
+      ${made ? `<span class="tag">#${made.id} in Dispatch</span>` : ov?.skip ? `<span class="tag gray">Skipped</span>` : changed ? `<span class="tag mash">Changed</span>` : `<span class="tag gray">Not yet</span>`}
     </div>`;
   };
   return `<div class="page-head"><h2>Recurring Requests</h2></div>
@@ -1133,6 +1161,7 @@ function modalHtml(){
     assignPerson: assignPersonModal,
     myProfile: myProfileModal,
     recurringForm: recurringFormModal,
+    occurrence: occurrenceModal,
   };
   const fn = map[m.type];
   return `<div class="modal-overlay" data-action="overlay-click"><div class="modal">
@@ -1323,18 +1352,49 @@ function assignPersonModal(){
     ${pickerResults(field)}`;
 }
 
+// One date of a recurring request: change people for this date only, or (editors) skip it
+function occurrenceModal(){
+  const t = byId(state.recurring, Number(state.modal.id)); if(!t) return '';
+  const day = localDay(state.modal.date + 'T00:00'), ov = overrideFor(t, day), client = byId(state.clients, t.client_id);
+  const line = (role, field, kind) => {
+    const changed = ov && field in (ov.changes||{});
+    const p = byId(state[kind+'s'], effectiveFor(t, day, field));
+    return `<div class="person-box" style="margin-top:10px;">
+      <span class="role">${role}${changed ? ' &middot; <span style="color:var(--accent-ink)">this date only</span>' : ''}</span>
+      ${p ? `<b>${esc(p.name)}</b>` : '<span class="sub">Nobody</span>'}
+      <div class="chip-row" style="margin-top:8px;">
+        <div class="chip" data-action="assign-person" data-occurrence="1" data-id="${t.id}" data-date="${state.modal.date}" data-field="${field}">${p ? 'Change' : 'Assign'} for this date</div>
+        ${p ? `<div class="chip" data-action="occurrence-set" data-id="${t.id}" data-date="${state.modal.date}" data-field="${field}" data-value="">Remove for this date</div>` : ''}
+        ${changed ? `<div class="chip" data-action="occurrence-reset" data-id="${t.id}" data-date="${state.modal.date}" data-field="${field}">Back to usual</div>` : ''}
+      </div>
+    </div>`;
+  };
+  return `<h2>${esc(dayLabel(day))} &middot; ${fmtTime(t.time_of_day)}</h2>
+    <div class="sub">${esc(client?.name||'')} &middot; ${esc(describeRepeat(t))}</div>
+    ${ov?.skip ? `<div class="private" style="margin-top:12px;">This date is skipped</div>` : ''}
+    ${line('Volunteer','volunteer_id','volunteer')}${line('Pickup driver','pickup_driver_id','driver')}${line('Return driver','return_driver_id','driver')}
+    ${isEditor() ? `<div class="btn-row" style="margin-top:16px;"><button class="btn btn-outline" data-action="occurrence-skip" data-id="${t.id}" data-date="${state.modal.date}">${ov?.skip ? 'Don\'t skip' : 'Skip this date'}</button></div>` : ''}`;
+}
 function recurringFormModal(){
   const t = state.modal.id ? byId(state.recurring, state.modal.id) : null;
   if(state.draft._formKind !== 'recurring'){
     state.draft = t ? {_formKind:'recurring', ...t, time_of_day:(t.time_of_day||'10:00').slice(0,5), bags:String(t.bags)}
-                    : {_formKind:'recurring', days:[], time_of_day:'10:00', bags:'1', active:true};
+                    : {_formKind:'recurring', days:[], time_of_day:'10:00', bags:'1', active:true, repeat:'weekly', interval_weeks:1, start_date: ymd(new Date()), month_weeks:[]};
   }
   const d = state.draft;
   const optional = field => d[field] ? inlinePicker(field) + `<a class="sub" style="cursor:pointer;display:inline-block;margin-top:4px;" data-action="clear-field" data-field="${field}">Remove</a>` : inlinePicker(field);
   return `<h2>${t ? 'Edit' : 'New'} Recurring Request</h2>
     <label>Client</label>${inlinePicker('client_id')}
-    <label>Every</label>
+    <label>Day</label>
     <div class="chip-row">${WORK_DAYS.map(i=>`<div class="chip ${(d.days||[]).includes(i)?'active':''}" data-action="toggle-day" data-field="days" data-day="${i}">${DAY_SHORT[i]}</div>`).join('')}</div>
+    <label>Repeats</label>
+    <div class="chip-row">
+      ${[1,2,3,4].map(n=>`<div class="chip ${d.repeat!=='monthly' && Number(d.interval_weeks||1)===n?'active':''}" data-action="set-repeat" data-repeat="weekly" data-n="${n}">${n===1?'Every week':`Every ${n} weeks`}</div>`).join('')}
+      <div class="chip ${d.repeat==='monthly'?'active':''}" data-action="set-repeat" data-repeat="monthly">Monthly</div>
+    </div>
+    ${d.repeat==='monthly' ? `<label>Which week of the month</label>
+      <div class="chip-row">${[1,2,3,4,5].map(n=>`<div class="chip ${(d.month_weeks||[]).includes(n)?'active':''}" data-action="toggle-day" data-field="month_weeks" data-day="${n}">${ORDINAL[n]}</div>`).join('')}</div>`
+      : `<label>Starting</label><input type="date" data-bind="start_date" value="${esc(d.start_date||'')}">`}
     <label>Time</label><input type="time" data-bind="time_of_day" value="${esc(d.time_of_day||'')}">
     <label>Bags</label><div class="chip-row">${bagChips()}</div>
     <label>Volunteer</label>${d.volunteer_id || d._showVol ? optional('volunteer_id') : `<div class="btn btn-outline btn-sm" data-action="set-draft" data-field="_showVol" data-value="1">Choose a volunteer</div>`}
@@ -1394,13 +1454,13 @@ function initEvents(){
     switch(action){
       case 'toggle-menu': state.menuOpen = !state.menuOpen; render(); break;
       case 'close-menu': if(e.target===actionEl) { state.menuOpen=false; render(); } break;
-      case 'logout': await sb.auth.signOut(); state.session=null; state.profile=null; state.menuOpen=false; state.modal=null; state.draft={}; state.route='dashboard'; state.authMode='login'; state.authError=''; render(); break;
+      case 'logout': await sb.auth.signOut(); state.session=null; state.profile=null; state.menuOpen=false; state.modal=null; state.draft={}; state.route='dashboard'; state.authMode='login'; state.authError=''; state.authForm={}; state.toast=null; render(); break;
       case 'switch-auth': state.authMode = state.authMode==='login'?'signup':'login'; state.authError=''; state.authInfo=''; render(); break;
       case 'do-login': {
         const email = document.getElementById('auth-email').value.trim();
         const password = document.getElementById('auth-password').value;
         const {error} = await sb.auth.signInWithPassword({email,password});
-        if(error){ state.authError = friendlyAuthError(error); state.authInfo=''; render(); } else { state.authInfo=''; await onAuthed(); }
+        if(error){ state.authError = friendlyAuthError(error); state.authInfo=''; render(); } else { state.authInfo=''; state.authForm = {}; await onAuthed(); }
         break;
       }
       case 'do-signup': {
@@ -1412,11 +1472,11 @@ function initEvents(){
         const {data, error} = await sb.auth.signUp({email, password, options:{data:{name}}});
         if(error){ state.authError = friendlyAuthError(error); render(); }
         else if(!data.session){ state.authMode='login'; state.authError=''; state.authInfo = 'Account created. Check your email for a confirmation link, then come back and log in.'; render(); }
-        else { state.authError=''; await onAuthed(); }
+        else { state.authError=''; state.authForm = {}; await onAuthed(); }
         break;
       }
       case 'open-modal':
-        state.modal = {type: actionEl.getAttribute('data-modal'), id: actionEl.getAttribute('data-id')};
+        state.modal = {type: actionEl.getAttribute('data-modal'), id: actionEl.getAttribute('data-id'), date: actionEl.getAttribute('data-date')};
         state.draft = {}; state.modalStack = []; state.pickerSearch = {}; state.menuOpen = false;
         if(state.modal.type==='newRequest'){ state.volDays = defaultVolDays(); }
         render(); break;
@@ -1455,13 +1515,25 @@ function initEvents(){
       case 'pick': {
         const field = actionEl.getAttribute('data-field'); const value = actionEl.getAttribute('data-value');
         state.pickerSearch[field] = '';
-        if(state.modal?.type==='assignPerson'){ state.modal.recurring ? await assignToRecurring(state.modal.id, field, value) : await assignToRequest(state.modal.id, field, value); }
+        if(state.modal?.type==='assignPerson'){
+          if(state.modal.date){ const m = state.modal; state.modal = state.modalStack.pop()?.modal || null; state.modalStack = []; await setOverride(m.id, m.date, {[field]: value}); }
+          else state.modal.recurring ? await assignToRecurring(state.modal.id, field, value) : await assignToRequest(state.modal.id, field, value);
+        }
         else { state.draft[field] = value; render(); }
         break;
       }
       case 'unpick': { const f = actionEl.getAttribute('data-field'); state.draft[f] = null; state.pickerSearch[f] = ''; if(f==='volunteer_id') state.draft._showVol = '1'; render(); break; }
       case 'clear-field': state.draft[actionEl.getAttribute('data-field')] = null; render(); break;
       case 'assign-person': {
+        if(actionEl.getAttribute('data-occurrence')){
+          // choosing someone for one date only
+          const t = byId(state.recurring, Number(actionEl.getAttribute('data-id')));
+          state.modalStack = [{modal: state.modal, draft: state.draft, field: actionEl.getAttribute('data-field')}];
+          state.modal = {type:'assignPerson', id:t.id, field: actionEl.getAttribute('data-field'), recurring:true, date: actionEl.getAttribute('data-date')};
+          state.pickerSearch = {}; state.draft = {};
+          state.volDays = [new Date(state.modal.date + 'T00:00').getDay()].filter(d=>d<6);
+          render(); break;
+        }
         const isRec = !!actionEl.getAttribute('data-recurring');
         const r = byId(isRec ? state.recurring : state.requests, Number(actionEl.getAttribute('data-id')));
         state.modal = {type:'assignPerson', id:r.id, field: actionEl.getAttribute('data-field'), recurring: isRec};
@@ -1508,6 +1580,17 @@ function initEvents(){
         showToast('Deleted'); break;
       }
       case 'save-recurring': await saveRecurring(); break;
+      case 'set-repeat':
+        state.draft.repeat = actionEl.getAttribute('data-repeat');
+        if(state.draft.repeat==='weekly') state.draft.interval_weeks = Number(actionEl.getAttribute('data-n'));
+        render(); break;
+      case 'occurrence-set': await setOverride(Number(actionEl.getAttribute('data-id')), actionEl.getAttribute('data-date'), {[actionEl.getAttribute('data-field')]: actionEl.getAttribute('data-value') || null}); break;
+      case 'occurrence-reset': await setOverride(Number(actionEl.getAttribute('data-id')), actionEl.getAttribute('data-date'), {}, actionEl.getAttribute('data-field')); break;
+      case 'occurrence-skip': {
+        const id = Number(actionEl.getAttribute('data-id')), date = actionEl.getAttribute('data-date');
+        const ov = state.overrides.find(o=>o.recurring_id===id && o.run_date===date);
+        await setOverride(id, date, {}, null, !(ov?.skip)); break;
+      }
       case 'go-request': {
         const r = byId(state.requests, Number(actionEl.getAttribute('data-id')));
         state.route = 'dispatch'; state.dispatchTab = r.status; state.dispatchSearch = String(r.id); state.navStack = [];
@@ -1593,6 +1676,7 @@ function initEvents(){
     }
     const bindEl = e.target.closest('[data-bind]');
     if(bindEl){ state.draft[bindEl.getAttribute('data-bind')] = bindEl.value; }
+    if(e.target.id && e.target.id.startsWith('auth-')) state.authForm[e.target.id] = e.target.value;
   });
   document.addEventListener('change', (e)=>{
     if(e.target.closest('[data-live]')) return;
@@ -1642,6 +1726,17 @@ async function updateRecurring(id, patch){
   if(d){ const i = state.recurring.findIndex(x=>x.id===id); state.recurring[i] = d; render(); }
   return d;
 }
+// save a one-time change (or skip) for one date of a recurring request
+async function setOverride(id, date, changes, resetField, skip){
+  const cur = state.overrides.find(o=>o.recurring_id===id && o.run_date===date);
+  const merged = {...(cur?.changes||{}), ...changes};
+  if(resetField) delete merged[resetField];
+  const row = {recurring_id:id, run_date:date, changes: merged, skip: skip ?? (cur?.skip || false)};
+  const {data, error} = await sb.from('recurring_overrides').upsert(row).select().single();
+  if(error){ showToast(error.message); return; }
+  state.overrides = state.overrides.filter(o=>!(o.recurring_id===id && o.run_date===date)).concat(data);
+  showToast(skip===true ? 'This date is skipped' : skip===false ? 'This date is back on' : 'Saved for this date only');
+}
 async function assignToRecurring(id, field, value){
   const saved = await updateRecurring(id, {[field]: value});
   if(!saved) return;
@@ -1652,10 +1747,13 @@ async function saveRecurring(){
   const d = state.draft;
   if(!d.client_id){ showToast('Select a client'); return; }
   if(!(d.days||[]).length){ showToast('Choose at least one day'); return; }
+  if(d.repeat==='monthly' && !(d.month_weeks||[]).length){ showToast('Choose which week of the month'); return; }
   const payload = {
     client_id: d.client_id, days: d.days, time_of_day: d.time_of_day || '10:00', bags: Number(d.bags)||1,
     volunteer_id: d.volunteer_id||null, pickup_driver_id: d.pickup_driver_id||null, return_driver_id: d.return_driver_id||null,
     notes: (d.notes||'').trim() || null,
+    repeat: d.repeat || 'weekly', interval_weeks: Number(d.interval_weeks)||1, month_weeks: d.month_weeks || [],
+    start_date: d.start_date || ymd(new Date()),
   };
   const id = state.modal.id ? Number(state.modal.id) : null;
   let saved;
@@ -1713,6 +1811,10 @@ async function savePerson(kind, id){
   const prev = state.modalStack.pop();
   if(prev){
     // came here from a request: go back to it with the new person already chosen
+    if(prev.modal.type==='assignPerson' && prev.modal.date){
+      const m = prev.modal; state.modal = state.modalStack.pop()?.modal || null; state.modalStack = []; state.draft = {};
+      await setOverride(m.id, m.date, {[prev.field]: saved.id}); return;
+    }
     if(prev.modal.type==='assignPerson'){ prev.modal.recurring ? await assignToRecurring(prev.modal.id, prev.field, saved.id) : await assignToRequest(prev.modal.id, prev.field, saved.id); return; }
     state.modal = prev.modal; state.draft = {...prev.draft, [prev.field]: saved.id};
     state.pickerSearch[prev.field] = ''; render(); return;
