@@ -11,7 +11,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Kvisa">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="theme-color" content="#FFFFFF">">
+<meta name="theme-color" content="#FFFFFF">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -188,6 +188,9 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .box-x svg{width:13px;height:13px;}
 .req-line a,.lc-sub a{color:var(--ink-soft);text-decoration:none;}
 .req-line a:hover,.lc-sub a:hover{color:var(--primary);text-decoration:underline;}
+.msg-preview{white-space:pre-wrap;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:13.5px;color:var(--ink-soft);}
+.send-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
+.send-grid .btn{text-decoration:none;}
 .meta{font-size:11.5px;color:var(--ink-faint);text-align:center;margin:18px 0 4px;line-height:1.7;}
 .person-box.faded{padding:5px 11px;font-size:12px;opacity:.75;}
 .person-box.faded .role{font-size:10px;}
@@ -1151,7 +1154,7 @@ function settings(){
         <div class="chip ${state.inviteRole==='editor'?'active':''}" data-action="set-invite-role" data-role="editor">Editor (full access + Settings)</div>
       </div>
       <div class="btn btn-primary btn-sm" data-action="send-invite">Add invite</div>
-      ${pendingInvites().length ? `<div style="margin-top:12px;"><div class="sub">Waiting to sign up:</div>${pendingInvites().map(i=>`<div class="list-item"><span>${esc(i.email)} <span class="tag gray">${i.role==='editor'?'Editor':'Dispatcher'}</span></span><button class="btn btn-danger btn-sm" data-action="remove-invite" data-email="${esc(i.email)}">Remove</button></div>`).join('')}</div>` : ''}
+      ${pendingInvites().length ? `<div style="margin-top:12px;"><div class="sub">Waiting to sign up:</div>${pendingInvites().map(i=>`<div class="list-item"><span>${esc(i.email)} <span class="tag gray">${i.role==='editor'?'Editor':'Dispatcher'}</span></span><div class="btn-row" style="width:auto;gap:6px;"><button class="btn btn-outline btn-sm" data-action="open-send-invite" data-email="${esc(i.email)}">Send</button><button class="btn btn-danger btn-sm" data-action="remove-invite" data-email="${esc(i.email)}">Remove</button></div></div>`).join('')}</div>` : ''}
       <h4 style="margin-top:18px;">Current users</h4>
       ${state.profiles.map(p=>`<div class="list-item">
         <div><span class="name">${esc(p.name || p.email)}</span><div class="sub">${p.name ? esc(p.email)+' · ' : ''}${p.role==='editor'?'Editor':'Dispatcher'}</div></div>
@@ -1179,6 +1182,7 @@ function modalHtml(){
     myProfile: myProfileModal,
     recurringForm: recurringFormModal,
     occurrence: occurrenceModal,
+    sendInvite: sendInviteModal,
   };
   const fn = map[m.type];
   return `<div class="modal-overlay" data-action="overlay-click"><div class="modal">
@@ -1424,6 +1428,31 @@ function recurringFormModal(){
       <button class="btn btn-outline" data-action="close-modal">Cancel</button>
       <button class="btn btn-primary" data-action="save-recurring">Save</button>
     </div>`;
+}
+// The app's own address (works wherever it's hosted)
+function appUrl(){ return /^https?:/.test(location.protocol) ? location.origin + location.pathname : 'https://yidele.github.io/nekius-dispatch/'; }
+function inviteMessage(email){
+  const inv = state.invites.find(i=>i.email===email);
+  const role = inv?.role === 'editor' ? 'an Editor' : 'a dispatcher';
+  return `You're invited to Kvisa Dispatch as ${role}.\n\n`
+    + `1. Open ${appUrl()}\n`
+    + `2. Tap "Sign up"\n`
+    + `3. Enter your name, this email (${email}) and a password\n\n`
+    + `Tip: add it to your home screen (Share → Add to Home Screen) so it opens like an app.`;
+}
+function sendInviteModal(){
+  const email = state.modal.email, msg = inviteMessage(email);
+  const enc = encodeURIComponent;
+  return `<h2>Send the invitation</h2>
+    <div class="sub" style="margin-bottom:12px;">${esc(email)}</div>
+    <div class="msg-preview">${esc(msg)}</div>
+    <div class="send-grid">
+      <a class="btn btn-primary" href="mailto:${enc(email)}?subject=${enc('Your invitation to Kvisa Dispatch')}&body=${enc(msg)}">${icon('mail')} Email</a>
+      <a class="btn btn-outline" href="https://wa.me/?text=${enc(msg)}" target="_blank" rel="noopener">WhatsApp</a>
+      <a class="btn btn-outline" href="sms:?&body=${enc(msg)}">Text message</a>
+      <button class="btn btn-outline" data-action="copy-invite">${icon('copy')} Copy</button>
+    </div>
+    <div class="btn-row" style="margin-top:14px;"><button class="btn btn-outline" data-action="close-modal">Done</button></div>`;
 }
 function myProfileModal(){
   const me = state.profile || {};
@@ -1686,10 +1715,13 @@ function initEvents(){
         const role = state.inviteRole || 'dispatcher';
         if(!/^\S+@\S+\.\S+$/.test(email)){ showToast('Enter a valid email'); break; }
         if(await addInvite(email, role)){ state.inviteEmail = ''; state.inviteRole = 'dispatcher'; }
-        if(state.invites.some(i=>i.email===email.toLowerCase())) showToast(`Invited as ${role==='editor'?'Editor':'Dispatcher'} — they can now sign up with ${email}`);
+        // right away offer to send them the invitation by email / WhatsApp / text
+        if(state.invites.some(i=>i.email===email.toLowerCase())){ state.modal = {type:'sendInvite', email: email.toLowerCase()}; render(); }
         break;
       }
       case 'set-invite-role': state.inviteRole = actionEl.getAttribute('data-role'); render(); break;
+      case 'open-send-invite': state.modal = {type:'sendInvite', email: actionEl.getAttribute('data-email')}; render(); break;
+      case 'copy-invite': copyToClipboard(inviteMessage(state.modal.email)); break;
       case 'remove-invite': await removeInvite(actionEl.getAttribute('data-email')); render(); break;
       case 'toggle-role': await updateProfileRole(actionEl.getAttribute('data-id'), actionEl.getAttribute('data-role')); render(); break;
       case 'remove-user': if(confirm('Remove this user\'s access?')){ await removeProfile(actionEl.getAttribute('data-id')); render(); } break;
