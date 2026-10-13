@@ -979,7 +979,7 @@ function clientDetail(){
   return hero(c.name, statusBadgePlain(c.status) + (c.is_mashilach ? `<span class="badge plain badge-white">Mashilach</span>` : ''), 'editClient', c.id)
     + section('user', 'Contact Information', fieldRow('user','Name',esc(c.name)) + fieldRow('phone','Phone',telLink(c.phone)), 'editClient', c.id)
     + section('pin', 'Address', fieldRow('pin','Address',mapLink(c.address)) + fieldRow('info','Address instructions',esc(c.note||'')), 'editClient', c.id)
-    + (c.private_note ? section('note', 'Note', `<div class="fval">${esc(c.private_note)}</div>`, 'editClient', c.id) : '')
+    + (c.private_note ? section('note', 'Note', `<div class="fval" style="white-space:pre-line;">${esc(c.private_note)}</div>`, 'editClient', c.id) : '')
     + requestsSection(reqs, 'client', c.id) + recordMeta(c);
 }
 function volunteerDetail(){
@@ -992,7 +992,7 @@ function volunteerDetail(){
     + section('wash', 'Washing', fieldRow('calendar','Available days',esc(daysLabel(v))) + fieldRow('bag','Bag capacity', v.bag_capacity ? esc(capacityLabel(v.bag_capacity)) : '')
         + fieldRow('wash','Wash frequency',esc(WASH_FREQ[v.wash_frequency]||''))
         + (v.status==='temporary_inactive' ? fieldRow('info','Away', `${esc(v.temp_inactive_from||'')} – ${esc(v.temp_inactive_until||'')}`) : ''), 'editVolunteer', v.id)
-    + (v.private_note ? section('note', 'Note', `<div class="fval">${esc(v.private_note)}</div>`, 'editVolunteer', v.id) : '')
+    + (v.private_note ? section('note', 'Note', `<div class="fval" style="white-space:pre-line;">${esc(v.private_note)}</div>`, 'editVolunteer', v.id) : '')
     + requestsSection(reqs, 'volunteer', v.id) + recordMeta(v);
 }
 function driverDetail(){
@@ -1000,6 +1000,7 @@ function driverDetail(){
   const reqs = state.requests.filter(r=>r.pickup_driver_id===d.id || r.return_driver_id===d.id);
   return hero(d.name, statusBadgePlain(d.status) + (d.contact_sms ? `<span class="badge plain badge-white">SMS</span>` : '') + (d.contact_whatsapp ? `<span class="badge plain badge-white">WhatsApp</span>` : ''), 'editDriver', d.id)
     + section('user', 'Contact Information', fieldRow('user','Name',esc(d.name)) + fieldRow('phone','Phone',telLink(d.phone)) + fieldRow('mail','Email', d.email ? `<a href="mailto:${esc(d.email)}">${esc(d.email)}</a>` : '') + fieldRow('pin','Address',mapLink(d.address)), 'editDriver', d.id)
+    + (d.private_note ? section('note', 'Note', `<div class="fval" style="white-space:pre-line;">${esc(d.private_note)}</div>`, 'editDriver', d.id) : '')
     + requestsSection(reqs, 'driver', d.id) + recordMeta(d);
 }
 
@@ -1222,6 +1223,7 @@ function personFormModal(kind, id){
       <div class="field"><label>Phone</label><input data-bind="phone" type="tel" value="${esc(state.draft.phone||'')}"></div>
       <div class="field"><label>Email</label><input data-bind="email" type="email" value="${esc(state.draft.email||'')}"></div>
       <div class="field"><label>Address</label><input data-bind="address" value="${esc(state.draft.address||'')}"></div>
+      <div class="field"><label>Note</label><textarea data-bind="private_note" rows="2">${esc(state.draft.private_note||'')}</textarea></div>
       <label>Contact method</label>
       <div class="chip-row">
         <div class="chip ${state.draft.contact_sms?'active':''}" data-action="toggle-chip" data-field="contact_sms">SMS</div>
@@ -1796,7 +1798,7 @@ async function savePerson(kind, id){
   const COLS = {
     client: ['name','phone','address','note','private_note','is_mashilach','status'],
     volunteer: ['name','phone','address','note','private_note','status','temp_inactive_from','temp_inactive_until','bag_capacity','wash_frequency','available_days'],
-    driver: ['name','phone','email','address','contact_sms','contact_whatsapp','status'],
+    driver: ['name','phone','email','address','private_note','contact_sms','contact_whatsapp','status'],
   }[kind];
   const d = {};
   for(const k of COLS){ if(k in state.draft){ const val = state.draft[k]; d[k] = (typeof val==='string' && val.trim()==='') ? null : (typeof val==='string' ? val.trim() : val); } }

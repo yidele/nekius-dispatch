@@ -404,3 +404,6 @@ begin
   return made;
 end;
 $$;
+
+-- 2026-10-13: note field for drivers
+alter table drivers add column if not exists private_note text;
