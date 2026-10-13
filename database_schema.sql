@@ -240,3 +240,8 @@ begin
   return new;
 end;
 $$;
+
+-- 2026-10-13: who created each client / volunteer / driver
+alter table clients add column if not exists created_by uuid default auth.uid() references profiles(id);
+alter table volunteers add column if not exists created_by uuid default auth.uid() references profiles(id);
+alter table drivers add column if not exists created_by uuid default auth.uid() references profiles(id);

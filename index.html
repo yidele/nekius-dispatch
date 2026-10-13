@@ -30,24 +30,7 @@
   --font-display:'Space Grotesk', system-ui, sans-serif;
   --font-body:'Inter', system-ui, -apple-system, sans-serif;
 }
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --bg:#101F1A; --surface:#16281F; --surface-2:#1C332A; --line:#2A473B;
-    --ink:#EAF3EC; --ink-soft:#AEC4B8; --ink-faint:#7A9186;
-    --primary:#66BCA4; --primary-dark:#3F8B76; --primary-light:#1F3E34;
-    --accent:#E5A75C; --accent-light:#3B2C17; --accent-ink:#E5A75C;
-    --danger:#E28178; --danger-light:#3A211E;
-    --st-open:#E3A45B; --st-open-bg:#3A2C18;
-    --st-assigned:#ABADE0; --st-assigned-bg:#282A45;
-    --st-posted:#7FC2DE; --st-posted-bg:#1B3440;
-    --st-delivered:#7FDBB4; --st-delivered-bg:#173A2C;
-    --st-finished:#C6A8E8; --st-finished-bg:#31264A;
-    --st-completed:#7FDDA9; --st-completed-bg:#173A28;
-    --st-not_covered:#E28178; --st-not_covered-bg:#3A211E;
-    --st-cancelled:#8C978C; --st-cancelled-bg:#233026;
-    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 24px -14px rgba(0,0,0,.5);
-  }
-}
+:root{color-scheme:light;}
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
 body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;}
@@ -57,11 +40,11 @@ button,input,select,textarea{font-family:var(--font-body);}
 #app{min-height:100vh;display:flex;flex-direction:column;}
 
 /* top bar + drawer */
-.header{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;background:var(--primary);color:#fff;padding:12px 14px;}
-.header .title{font-family:var(--font-display);font-size:19px;font-weight:600;flex:1;letter-spacing:.2px;}
-.icon-btn{background:none;border:none;color:#fff;padding:6px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
-.icon-btn:hover{background:rgba(255,255,255,.12);}
-.avatar{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0;border:none;cursor:pointer;}
+.header{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;background:var(--surface);color:var(--ink);padding:12px 14px;border-bottom:1px solid var(--line);}
+.header .title{font-family:var(--font-display);font-size:19px;font-weight:600;flex:1;letter-spacing:.2px;color:var(--primary-dark);}
+.icon-btn{background:none;border:none;color:var(--ink);padding:6px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.icon-btn:hover{background:var(--surface-2);}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--primary-light);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:var(--primary-dark);flex-shrink:0;border:none;cursor:pointer;}
 .hamburger-menu{position:fixed;inset:0;background:rgba(15,25,20,.4);z-index:30;}
 .hamburger-panel{position:fixed;top:0;left:0;bottom:0;width:78%;max-width:300px;background:var(--surface);box-shadow:var(--shadow);display:flex;flex-direction:column;animation:slideIn .18s ease;}
 @keyframes slideIn{from{transform:translateX(-100%);}to{transform:none;}}
@@ -99,11 +82,11 @@ hr.sep{border:none;height:1px;background:var(--line);margin:8px 6px;}
 .page-head h2{font-size:22px;}
 .page-head .sub{color:var(--ink-soft);font-size:13.5px;margin-top:2px;}
 .section-title{font-family:var(--font-display);font-size:22px;font-weight:600;margin:4px 0 14px;}
-.hero-card{background:linear-gradient(135deg,var(--primary) 0%,var(--primary-dark) 100%);color:#fff;border-radius:var(--radius-l);padding:20px;box-shadow:var(--shadow);}
-.hero-card h2{color:#fff;font-size:24px;display:flex;align-items:center;gap:10px;}
-.hero-card .back-btn{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.18);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;margin-bottom:14px;}
+.hero-card{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:var(--radius-l);padding:20px;}
+.hero-card h2{color:var(--ink);font-size:24px;display:flex;align-items:center;gap:10px;}
+.hero-card .back-btn{width:38px;height:38px;border-radius:50%;background:var(--surface-2);border:none;color:var(--ink);display:flex;align-items:center;justify-content:center;cursor:pointer;margin-bottom:14px;}
 .hero-card .badges{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
-.badge-white{background:rgba(255,255,255,.22)!important;color:#fff!important;}
+.badge-white{background:var(--primary-light)!important;color:var(--primary-dark)!important;}
 .section-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-m);padding:16px;margin-top:14px;}
 .section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;}
 .section-name{display:flex;align-items:center;gap:10px;}
@@ -170,6 +153,8 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .tab.active{color:var(--primary);border-bottom-color:var(--primary);}
 .tab .count{background:var(--surface-2);color:var(--ink-soft);border-radius:999px;padding:1px 7px;font-size:11.5px;}
 .tab.active .count{background:var(--primary);color:#fff;}
+.tab.tab-icon{padding:9px 8px;opacity:.6;}
+.tab.tab-icon svg{width:15px;height:15px;}
 .date-group-label{font-family:var(--font-display);font-weight:700;font-size:15px;margin:18px 0 10px;color:var(--ink-soft);}
 .date-group-label:first-child{margin-top:4px;}
 
@@ -189,7 +174,14 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .person-box{padding:9px 11px;border:1px solid var(--line);border-radius:10px;margin-top:8px;background:var(--surface-2);font-size:13.5px;}
 .person-box .role{font-size:11px;color:var(--ink-faint);display:block;font-weight:600;text-transform:uppercase;letter-spacing:.02em;}
 .person-box a{color:var(--ink-soft);text-decoration:none;}
+.person-box{position:relative;}
 .person-box .addr{font-size:12.5px;color:var(--ink-soft);margin-top:1px;}
+.box-x{position:absolute;top:6px;right:6px;background:none;border:none;color:var(--ink-faint);cursor:pointer;padding:4px;border-radius:6px;display:flex;}
+.box-x:hover{background:var(--danger-light);color:var(--danger);}
+.box-x svg{width:13px;height:13px;}
+.req-line a,.lc-sub a{color:var(--ink-soft);text-decoration:none;}
+.req-line a:hover,.lc-sub a:hover{color:var(--primary);text-decoration:underline;}
+.meta{font-size:11.5px;color:var(--ink-faint);text-align:center;margin:18px 0 4px;line-height:1.7;}
 .person-box.faded{padding:5px 11px;font-size:12px;opacity:.75;}
 .person-box.faded .role{font-size:10px;}
 .person-box.empty{border-style:dashed;background:transparent;color:var(--ink-faint);}
@@ -403,6 +395,8 @@ const ICONS = {
   check:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
   filter:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/></svg>',
   clip:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="3" width="10" height="4" rx="1"/><path d="M7 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/></svg>',
+  alert:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>',
+  x:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
   lock:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
 };
 function icon(name){ return ICONS[name] || ''; }
@@ -683,44 +677,64 @@ function dayLabel(iso){
   if(diff === -1) return 'Yesterday';
   return new Date(iso).toLocaleDateString('en-US', {weekday:'long', month:'short', day:'numeric'});
 }
-// Today first, then tomorrow, after tomorrow and later days; past days follow, most recent first.
-// Finished tabs (Completed / Not Covered / Cancelled) simply show newest first.
-function groupByDay(list, newestFirst){
+function doneDate(r){ return r.completed_at || r.updated_at; }
+// Active requests: overdue days first (oldest first), then Today, Tomorrow, After tomorrow and later days.
+// Finished requests: newest first by the day they finished; only Today and Yesterday get a heading.
+function groupByDay(list, finished){
   const t0 = localDay(new Date()).getTime();
-  const key = r => r.requested_for ? localDay(r.requested_for).getTime() : Infinity;
-  const rank = r => { const k = key(r); return newestFirst ? -k : (k >= t0 ? k - t0 : 1e15 + (t0 - k)); };
-  const sorted = list.slice().sort((a,b)=> (rank(a) - rank(b)) || (new Date(a.requested_for) - new Date(b.requested_for)));
+  const when = r => finished ? doneDate(r) : r.requested_for;
+  const day = r => when(r) ? localDay(when(r)).getTime() : Infinity;
+  const sorted = list.slice().sort((a,b)=> finished
+    ? new Date(when(b)) - new Date(when(a))
+    : (day(a) - day(b)) || (new Date(a.requested_for) - new Date(b.requested_for)));
   const groups = [];
   sorted.forEach(r=>{
-    const label = dayLabel(r.requested_for);
+    let label = dayLabel(when(r));
+    if(finished && !['Today','Yesterday'].includes(label)) label = '';
     if(!groups.length || groups[groups.length-1].label !== label) groups.push({label, items:[]});
     groups[groups.length-1].items.push(r);
   });
-  return groups.map(g=>`<div class="date-group-label">${esc(g.label)}</div>${g.items.map(requestCard).join('')}`).join('');
+  return groups.map(g=>`${g.label ? `<div class="date-group-label">${esc(g.label)}</div>` : '<div style="height:12px"></div>'}${g.items.map(requestCard).join('')}`).join('');
+}
+const TAB_ICONS = { open:'info', assigned:'volunteer', posted_pickup:'truck', delivered:'box', finished:'wash', posted_return:'truck', completed:'check', not_covered:'alert', cancelled:'x' };
+// the Completed tab only keeps today's and yesterday's; older ones live in Request History
+function inDispatchTab(r, tab){
+  if(r.status !== tab) return false;
+  if(tab === 'completed') return ['Today','Yesterday'].includes(dayLabel(doneDate(r)));
+  return true;
 }
 function dispatch(){
   const tabs = [...STATUS_FLOW, 'not_covered', 'cancelled'];
-  const counts = {}; tabs.forEach(t=> counts[t] = state.requests.filter(r=>r.status===t).length);
+  const counts = {}; tabs.forEach(t=> counts[t] = state.requests.filter(r=>inDispatchTab(r, t)).length);
   const q = state.dispatchSearch.trim();
-  let list = state.requests.filter(r=> r.status === state.dispatchTab);
+  let list = state.requests.filter(r=> inDispatchTab(r, state.dispatchTab));
   if(q) list = list.filter(r=> String(r.id).includes(q));
   return `
     <div class="btn btn-primary" data-action="open-modal" data-modal="newRequest">${icon('plus')} New Request</div>
     <div class="search-box" style="margin:12px 0;">${icon('search')}<input placeholder="Search by request ID…" inputmode="numeric" value="${esc(state.dispatchSearch)}" data-live="dispatchSearch"></div>
     <div class="tabs">
-      ${tabs.map(t=>`<div class="tab ${state.dispatchTab===t?'active':''}" data-action="dispatch-tab" data-tab="${t}">${TAB_LABELS[t]||STATUS_LABELS[t]}${counts[t]?`<span class="count">${counts[t]}</span>`:''}</div>`).join('')}
+      ${tabs.map(t=>{
+        const label = TAB_LABELS[t]||STATUS_LABELS[t];
+        // empty tabs shrink to a small icon; the open tab always shows its name
+        return counts[t] || state.dispatchTab===t
+          ? `<div class="tab ${state.dispatchTab===t?'active':''}" data-action="dispatch-tab" data-tab="${t}">${label}${counts[t]?`<span class="count">${counts[t]}</span>`:''}</div>`
+          : `<div class="tab tab-icon" data-action="dispatch-tab" data-tab="${t}" title="${label}" aria-label="${label}">${icon(TAB_ICONS[t])}</div>`;
+      }).join('')}
     </div>
     ${list.length===0 ? `<div class="empty">${icon('clip')}<div>No requests in ${TAB_LABELS[state.dispatchTab]||STATUS_LABELS[state.dispatchTab]}</div></div>` : groupByDay(list, DONE.includes(state.dispatchTab))}
   `;
 }
 
 function telLink(phone){ return phone ? `<a href="tel:${esc(phone.replace(/[^\d+]/g,''))}">${esc(phone)}</a>` : ''; }
+// opens the device's maps app (Google Maps link works on iPhone, iPad and Android)
+function mapLink(address){ return address ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}" target="_blank" rel="noopener">${esc(address)}</a>` : ''; }
 function personBox(role, kind, p, opts={}){
   if(!p) return '';
   return `<div class="person-box ${opts.faded?'faded':''}">
+    ${opts.removeField ? `<button class="box-x" title="Remove ${role.toLowerCase()}" data-action="unassign" data-id="${opts.reqId}" data-field="${opts.removeField}">${icon('x')}</button>` : ''}
     <span class="role">${role}</span>
     <span class="name-link" data-nav="${kind}" data-id="${p.id}">${esc(p.name)}</span>${p.phone ? ` &middot; ${telLink(p.phone)}` : ''}
-    ${opts.address && p.address ? `<div class="addr">${esc(p.address)}</div>` : ''}
+    ${opts.address && p.address ? `<div class="addr">${mapLink(p.address)}</div>` : ''}
   </div>`;
 }
 
@@ -751,9 +765,10 @@ function requestCard(r){
   const advance = (to, label, ic) => btn(label, ic, `data-action="advance" data-id="${r.id}" data-to="${to}"`, true);
   const copyPost = leg => btn('Copy Post Message', 'copy', `data-action="copy-post" data-id="${r.id}" data-leg="${leg}"`);
   const copyDriver = leg => btn('Copy Driver Message', 'copy', `data-action="copy-driver" data-id="${r.id}" data-leg="${leg}"`);
+  const isDone = DONE.includes(r.status);
   let actions = '';
   switch(r.status){
-    case 'open': actions = assign('volunteer_id', 'Assign Volunteer'); break;
+    case 'open': actions = assign('volunteer_id', 'Assign Volunteer') + (pdriver ? '' : btn('Assign Pickup Driver', 'truck', `data-action="assign-person" data-id="${r.id}" data-field="pickup_driver_id"`)); break;
     case 'assigned': actions = assign('pickup_driver_id', 'Assign Pickup Driver') + copyPost('pickup'); break;
     case 'posted_pickup': actions = pdriver ? advance('delivered', 'Delivered to Volunteer', 'box') + copyDriver('pickup')
                                             : assign('pickup_driver_id', 'Assign Pickup Driver') + copyPost('pickup'); break;
@@ -762,6 +777,8 @@ function requestCard(r){
     case 'posted_return': actions = rdriver ? advance('completed', 'Completed', 'check') + copyDriver('return')
                                             : assign('return_driver_id', 'Assign Return Driver') + copyPost('return'); break;
   }
+  // a volunteer removed after the request moved on can be assigned again right from the card
+  if(!vol && !isDone && r.status !== 'open') actions = assign('volunteer_id', 'Assign Volunteer') + actions;
   return `<div class="card req-card status-${r.status}">
     <div class="req-head">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span class="req-id">#${r.id}</span>${statusBadgeInteractive(r)}${by ? `<span class="by">by ${esc(by)}</span>` : ''}</div>
@@ -771,11 +788,11 @@ function requestCard(r){
       </div>
     </div>
     ${client ? `<div class="req-line">${icon('client')} <span class="name-link" data-nav="client" data-id="${client.id}">${esc(client.name)}</span>${client.is_mashilach ? `<span class="tag mash">Mashilach</span>` : ''}${client.phone ? ` &middot; ${telLink(client.phone)}` : ''}</div>
-      ${client.address ? `<div class="req-line">${icon('pin')} ${esc(client.address)}</div>` : ''}` : `<div class="req-line">${icon('client')} No client</div>`}
+      ${client.address ? `<div class="req-line">${icon('pin')} ${mapLink(client.address)}</div>` : ''}` : `<div class="req-line">${icon('client')} No client</div>`}
     <div class="req-line">${icon('bag')} ${bagsLabel(r.bags)} bag's &middot; ${icon('calendar')} ${fmtDateTime(r.requested_for)}</div>
-    ${personBox('Volunteer', 'volunteer', vol, {address:true})}
-    ${personBox('Pickup driver', 'driver', pdriver, {faded: pickupFaded})}
-    ${personBox('Return driver', 'driver', rdriver)}
+    ${personBox('Volunteer', 'volunteer', vol, {address:true, reqId:r.id, removeField: isDone ? null : 'volunteer_id'})}
+    ${personBox('Pickup driver', 'driver', pdriver, {faded: pickupFaded, reqId:r.id, removeField: isDone ? null : 'pickup_driver_id'})}
+    ${personBox('Return driver', 'driver', rdriver, {reqId:r.id, removeField: isDone ? null : 'return_driver_id'})}
     ${r.notes ? `<div class="private">${esc(r.notes)}</div>` : ''}
     ${actions ? `<div class="req-actions">${actions}</div>` : ''}
     ${DONE.includes(r.status) ? `<div style="text-align:center;margin-top:10px;"><a style="cursor:pointer;font-size:13px;color:var(--ink-faint);" data-action="toggle-expand" data-id="${r.id}">Show less &#9650;</a></div>` : ''}
@@ -891,7 +908,7 @@ function peoplePage(listName, kind, renderItem){
 function clients(){
   return peoplePage('clients', 'client', c => listCard('client', c, '', [
     c.is_mashilach ? `<span class="tag mash">Mashilach</span>` : '',
-    c.phone && `${icon('phone')} ${esc(c.phone)}`, c.address && `${icon('pin')} ${esc(c.address)}`,
+    c.phone && `${icon('phone')} ${telLink(c.phone)}`, c.address && `${icon('pin')} ${mapLink(c.address)}`,
     c.status!=='active' && `<span class="tag gray">${PERSON_STATUS[c.status]}</span>`]));
 }
 function volunteers(){
@@ -900,14 +917,14 @@ function volunteers(){
     const match = daysLabel(v, days);
     return listCard('volunteer', v, `<span class="dot ${volunteerReadiness(v)}"></span>`, [
       (days.length && match) ? `<span class="tag">Available ${days.length===1 ? DAY_LONG[days[0]] : match}</span>` : '',
-      v.phone && `${icon('phone')} ${esc(v.phone)}`,
+      v.phone && `${icon('phone')} ${telLink(v.phone)}`, v.address && `${icon('pin')} ${mapLink(v.address)}`,
       [daysLabel(v) && `${icon('calendar')} ${daysLabel(v)}`, v.bag_capacity && `${icon('bag')} ${capacityLabel(v.bag_capacity)}`].filter(Boolean).join(' &nbsp; '),
       v.status!=='active' && `<span class="tag gray">${PERSON_STATUS[v.status]}</span>`]);
   });
 }
 function drivers(){
   return peoplePage('drivers', 'driver', d => listCard('driver', d, '', [
-    d.phone && `${icon('phone')} ${esc(d.phone)}`,
+    d.phone && `${icon('phone')} ${telLink(d.phone)}`,
     [d.contact_sms && 'SMS', d.contact_whatsapp && 'WhatsApp'].filter(Boolean).map(m=>`<span class="tag gray">${m}</span>`).join(' '),
     d.status!=='active' && `<span class="tag gray">${PERSON_STATUS[d.status]}</span>`]));
 }
@@ -936,15 +953,23 @@ function requestList(reqs){
 function requestsSection(reqs, kind, id){
   return `<div class="section-card"><div class="section-head"><div class="section-name"><div class="icn">${icon('clip')}</div><h3>Requests</h3></div>${countPill(completedCount(kind, id))}</div>${requestList(reqs)}</div>`;
 }
+function fmtDay(iso){ return new Date(iso).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+function recordMeta(p){
+  if(!p.created_at) return '';
+  const by = profileName(p.created_by);
+  // "edited" only when it changed later than the moment it was created
+  const edited = p.updated_at && new Date(p.updated_at) - new Date(p.created_at) > 60000;
+  return `<div class="meta">Created ${fmtDay(p.created_at)}${by ? ` by ${esc(by)}` : ''}${edited ? `<br>Last edited ${fmtDay(p.updated_at)}` : ''}</div>`;
+}
 function statusBadgePlain(st){ return `<span class="badge plain badge-white">${esc(PERSON_STATUS[st]||st)}</span>`; }
 function clientDetail(){
   const c = byId(state.clients, state.routeId); if(!c) return `<div class="empty">Client not found.</div>`;
   const reqs = state.requests.filter(r=>r.client_id===c.id);
   return hero(c.name, statusBadgePlain(c.status) + (c.is_mashilach ? `<span class="badge plain badge-white">Mashilach</span>` : ''), 'editClient', c.id)
     + section('user', 'Contact Information', fieldRow('user','Name',esc(c.name)) + fieldRow('phone','Phone',telLink(c.phone)), 'editClient', c.id)
-    + section('pin', 'Address', fieldRow('pin','Address',esc(c.address||'')) + fieldRow('info','Address instructions',esc(c.note||'')), 'editClient', c.id)
+    + section('pin', 'Address', fieldRow('pin','Address',mapLink(c.address)) + fieldRow('info','Address instructions',esc(c.note||'')), 'editClient', c.id)
     + (c.private_note ? section('note', 'Note', `<div class="fval">${esc(c.private_note)}</div>`, 'editClient', c.id) : '')
-    + requestsSection(reqs, 'client', c.id);
+    + requestsSection(reqs, 'client', c.id) + recordMeta(c);
 }
 function volunteerDetail(){
   const v = byId(state.volunteers, state.routeId); if(!v) return `<div class="empty">Volunteer not found.</div>`;
@@ -952,19 +977,19 @@ function volunteerDetail(){
   const rd = volunteerReadiness(v);
   return hero(v.name, statusBadgePlain(v.status) + `<span class="badge plain badge-white">${READY_LABEL[rd]}</span>`, 'editVolunteer', v.id, `<span class="dot ${rd}"></span>`)
     + section('user', 'Contact Information', fieldRow('user','Name',esc(v.name)) + fieldRow('phone','Phone',telLink(v.phone)), 'editVolunteer', v.id)
-    + section('pin', 'Address', fieldRow('pin','Address',esc(v.address||'')) + fieldRow('info','Address instructions',esc(v.note||'')), 'editVolunteer', v.id)
+    + section('pin', 'Address', fieldRow('pin','Address',mapLink(v.address)) + fieldRow('info','Address instructions',esc(v.note||'')), 'editVolunteer', v.id)
     + section('wash', 'Washing', fieldRow('calendar','Available days',esc(daysLabel(v))) + fieldRow('bag','Bag capacity', v.bag_capacity ? esc(capacityLabel(v.bag_capacity)) : '')
         + fieldRow('wash','Wash frequency',esc(WASH_FREQ[v.wash_frequency]||''))
         + (v.status==='temporary_inactive' ? fieldRow('info','Away', `${esc(v.temp_inactive_from||'')} – ${esc(v.temp_inactive_until||'')}`) : ''), 'editVolunteer', v.id)
     + (v.private_note ? section('note', 'Note', `<div class="fval">${esc(v.private_note)}</div>`, 'editVolunteer', v.id) : '')
-    + requestsSection(reqs, 'volunteer', v.id);
+    + requestsSection(reqs, 'volunteer', v.id) + recordMeta(v);
 }
 function driverDetail(){
   const d = byId(state.drivers, state.routeId); if(!d) return `<div class="empty">Driver not found.</div>`;
   const reqs = state.requests.filter(r=>r.pickup_driver_id===d.id || r.return_driver_id===d.id);
   return hero(d.name, statusBadgePlain(d.status) + (d.contact_sms ? `<span class="badge plain badge-white">SMS</span>` : '') + (d.contact_whatsapp ? `<span class="badge plain badge-white">WhatsApp</span>` : ''), 'editDriver', d.id)
-    + section('user', 'Contact Information', fieldRow('user','Name',esc(d.name)) + fieldRow('phone','Phone',telLink(d.phone)) + fieldRow('mail','Email', d.email ? `<a href="mailto:${esc(d.email)}">${esc(d.email)}</a>` : '') + fieldRow('pin','Address',esc(d.address||'')), 'editDriver', d.id)
-    + requestsSection(reqs, 'driver', d.id);
+    + section('user', 'Contact Information', fieldRow('user','Name',esc(d.name)) + fieldRow('phone','Phone',telLink(d.phone)) + fieldRow('mail','Email', d.email ? `<a href="mailto:${esc(d.email)}">${esc(d.email)}</a>` : '') + fieldRow('pin','Address',mapLink(d.address)), 'editDriver', d.id)
+    + requestsSection(reqs, 'driver', d.id) + recordMeta(d);
 }
 
 /* ============================= History ============================= */
@@ -1258,6 +1283,7 @@ function initEvents(){
     if(e.target.closest('.modal-overlay') && !e.target.closest('.modal') && e.target.closest('[data-action="overlay-click"]')){
       closeModal(); return;
     }
+    if(e.target.closest('a[href]')) return; // phone and map links do their own thing
     const navEl = e.target.closest('[data-nav]');
     const actionEl = e.target.closest('[data-action]');
 
@@ -1352,6 +1378,18 @@ function initEvents(){
         const id = Number(actionEl.getAttribute('data-id')); const to = actionEl.getAttribute('data-to');
         const saved = await updateRequest(id, {status: to});
         if(saved){ if(state.route==='dispatch') state.dispatchTab = to; showToast(`#${id} moved to ${TAB_LABELS[to]||STATUS_LABELS[to]}`); }
+        break;
+      }
+      case 'unassign': {
+        const id = Number(actionEl.getAttribute('data-id')), field = actionEl.getAttribute('data-field');
+        const r = byId(state.requests, id);
+        const who = {volunteer_id:'volunteer', pickup_driver_id:'pickup driver', return_driver_id:'return driver'}[field];
+        if(!confirm(`Remove the ${who} from #${id}?`)) break;
+        const patch = {[field]: null};
+        // without its person, a step goes back to waiting for one
+        if(field==='volunteer_id' && r.status==='assigned') patch.status = 'open';
+        const saved = await updateRequest(id, patch);
+        if(saved){ if(state.route==='dispatch') state.dispatchTab = saved.status; showToast(`Removed the ${who}`); }
         break;
       }
       case 'toggle-expand': { const id = actionEl.getAttribute('data-id'); state.expanded[id] = !state.expanded[id]; render(); break; }
