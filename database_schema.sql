@@ -1,23 +1,18 @@
 -- Nekius Dispatch — database schema (Supabase / Postgres)
--- This is the exact schema running on the live project. It rebuilds the
--- app's tables from scratch, so it must only ever be run on an EMPTY project.
-
--- =========================================================
--- Clean slate (earlier prototype tables)
--- =========================================================
-drop trigger if exists on_auth_user_created on auth.users;
-drop table if exists requests, clients, volunteers, drivers, invites, app_settings, profiles cascade;
-drop function if exists handle_new_user() cascade;
-drop function if exists is_known_user() cascade;
-drop function if exists is_editor() cascade;
-drop function if exists touch_request() cascade;
-drop function if exists touch_updated_at() cascade;
+-- This matches what is running on the live project (applied 2026-10-13).
+-- The earlier prototype's empty tables were moved into the `legacy` schema
+-- (not exposed to the app) instead of being deleted.
+--
+-- Differences from a "textbook" setup, on purpose:
+--  * Foreign keys have no ON DELETE actions. Clients/volunteers/drivers are
+--    set Inactive rather than deleted, so this never matters in the app.
+--  * Used invites are kept; the app only lists invites with no account yet.
 
 -- =========================================================
 -- Tables
 -- =========================================================
 create table profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
+  id uuid primary key references auth.users(id),
   email text not null,
   role text not null default 'dispatcher' check (role in ('editor','dispatcher')),
   created_at timestamptz not null default now()
@@ -26,7 +21,7 @@ create table profiles (
 create table invites (
   email text primary key,
   role text not null default 'dispatcher' check (role in ('editor','dispatcher')),
-  invited_by uuid references profiles(id) on delete set null,
+  invited_by uuid references profiles(id),
   created_at timestamptz not null default now()
 );
 
@@ -72,10 +67,10 @@ create table drivers (
 
 create table requests (
   id bigint generated always as identity primary key,
-  client_id uuid references clients(id) on delete set null,
-  volunteer_id uuid references volunteers(id) on delete set null,
-  pickup_driver_id uuid references drivers(id) on delete set null,
-  return_driver_id uuid references drivers(id) on delete set null,
+  client_id uuid references clients(id),
+  volunteer_id uuid references volunteers(id),
+  pickup_driver_id uuid references drivers(id),
+  return_driver_id uuid references drivers(id),
   bags integer check (bags between 1 and 50), -- 4 is shown as "4+"
   requested_for timestamptz,
   status text not null default 'open' check (status in (
@@ -146,6 +141,7 @@ returns boolean language sql stable security definer set search_path = public as
 $$;
 
 -- First-ever signup becomes Editor; everyone else must be on the invite list.
+-- Used invites stay in the table; the app hides invites that already have an account.
 create function handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare
@@ -162,7 +158,6 @@ begin
   end if;
 
   insert into profiles (id, email, role) values (new.id, new.email, invited_role);
-  delete from invites where lower(email) = lower(new.email);
   return new;
 end;
 $$;
@@ -172,6 +167,11 @@ create trigger on_auth_user_created
   for each row execute function handle_new_user();
 
 revoke execute on function handle_new_user() from public, anon, authenticated;
+revoke execute on function is_editor() from public, anon;
+revoke execute on function is_known_user() from public, anon;
+grant execute on function handle_new_user() to supabase_auth_admin;
+grant select, insert on profiles to supabase_auth_admin;
+grant select on invites to supabase_auth_admin;
 
 -- =========================================================
 -- Row Level Security
@@ -185,8 +185,7 @@ alter table requests enable row level security;
 alter table app_settings enable row level security;
 
 create policy profiles_select on profiles for select to authenticated using (is_known_user());
-create policy profiles_update_editor on profiles for update to authenticated using (is_editor()) with check (is_editor());
-create policy profiles_delete_editor on profiles for delete to authenticated using (is_editor());
+create policy profiles_manage_editor on profiles for all to authenticated using (is_editor()) with check (is_editor());
 
 create policy invites_all_editor on invites for all to authenticated using (is_editor()) with check (is_editor());
 

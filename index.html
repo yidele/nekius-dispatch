@@ -291,7 +291,13 @@ async function createRequest(p){ const d=await createRow('requests',p); if(d){ s
 async function updateRequest(id,p){ const d=await updateRow('requests',id,{...p, updated_at:new Date().toISOString()}); if(d){ const i=state.requests.findIndex(x=>x.id===id); state.requests[i]=d; } return d; }
 async function deleteRequest(id){ const ok=await deleteRow('requests',id); if(ok){ state.requests = state.requests.filter(x=>x.id!==id); } return ok; }
 async function updateSettings(p){ const {data,error} = await sb.from('app_settings').update(p).eq('id',1).select().single(); if(error){showToast(error.message); return;} state.settings = {...state.settings, ...data}; }
-async function addInvite(email){ const d=await createRow('invites',{email: email.toLowerCase().trim()}); if(d){ state.invites.push(d); } return d; }
+async function addInvite(email){
+  const {data:d,error} = await sb.from('invites').upsert({email: email.toLowerCase().trim()}).select().single();
+  if(error){ showToast(error.message); return null; }
+  state.invites = state.invites.filter(i=>i.email!==d.email).concat(d); return d;
+}
+// Used invites stay in the database; only show the ones still waiting for a sign-up
+function pendingInvites(){ const taken = new Set(state.profiles.map(p=>p.email.toLowerCase())); return state.invites.filter(i=>!taken.has(i.email.toLowerCase())); }
 async function removeInvite(email){ const {error}=await sb.from('invites').delete().eq('email',email); if(!error) state.invites = state.invites.filter(i=>i.email!==email); }
 async function updateProfileRole(id, role){ const d=await updateRow('profiles', id, {role}); if(d){ const i=state.profiles.findIndex(x=>x.id===id); state.profiles[i]=d; } }
 async function removeProfile(id){ const ok = await deleteRow('profiles', id); if(ok){ state.profiles = state.profiles.filter(p=>p.id!==id); showToast('Removed from app access (their login still exists in Supabase Auth)'); } }
@@ -572,7 +578,7 @@ function settings(){
       <div class="sub">Add their email here, then tell them to open the app and tap "Sign up" using that same email.</div>
       <div class="field" style="margin-top:8px;"><input id="new-invite-email" type="email" placeholder="email@example.com"></div>
       <div class="btn btn-primary btn-sm" data-action="send-invite">Add invite</div>
-      ${state.invites.length ? `<div style="margin-top:12px;">${state.invites.map(i=>`<div class="list-item"><span>${esc(i.email)}</span><button class="btn btn-danger btn-sm" data-action="remove-invite" data-email="${esc(i.email)}">Remove</button></div>`).join('')}</div>` : ''}
+      ${pendingInvites().length ? `<div style="margin-top:12px;"><div class="sub">Waiting to sign up:</div>${pendingInvites().map(i=>`<div class="list-item"><span>${esc(i.email)}</span><button class="btn btn-danger btn-sm" data-action="remove-invite" data-email="${esc(i.email)}">Remove</button></div>`).join('')}</div>` : ''}
       <h4 style="margin-top:18px;">Current users</h4>
       ${state.profiles.map(p=>`<div class="list-item">
         <div><span class="name">${esc(p.email)}</span><div class="sub">${esc(p.role)}</div></div>
