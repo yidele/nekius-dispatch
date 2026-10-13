@@ -407,3 +407,16 @@ $$;
 
 -- 2026-10-13: note field for drivers
 alter table drivers add column if not exists private_note text;
+
+-- 2026-10-13: Suspended status; only editors delete people; deleting a person keeps history
+alter table clients drop constraint clients_status_check;
+alter table clients add constraint clients_status_check check (status in ('active','inactive','suspended'));
+alter table volunteers drop constraint volunteers_status_check;
+alter table volunteers add constraint volunteers_status_check check (status in ('active','inactive','temporary_inactive','suspended'));
+alter table drivers drop constraint drivers_status_check;
+alter table drivers add constraint drivers_status_check check (status in ('active','inactive','suspended'));
+create policy clients_delete_editor on clients as restrictive for delete to authenticated using (is_editor());
+create policy volunteers_delete_editor on volunteers as restrictive for delete to authenticated using (is_editor());
+create policy drivers_delete_editor on drivers as restrictive for delete to authenticated using (is_editor());
+-- requests.client_id / volunteer_id / pickup_driver_id / return_driver_id: on delete set null
+-- recurring_requests.client_id: on delete cascade; its volunteer / driver ids: on delete set null
