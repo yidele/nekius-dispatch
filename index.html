@@ -1,0 +1,926 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Nekius Dispatch</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+:root{
+  --blue:#1565c0; --blue-dark:#0d47a1; --blue-light:#e3f0fd;
+  --green:#2e8b57; --amber:#e0a500; --gray:#9aa1a9; --red:#c0392b;
+  --bg:#f3f5f7; --card:#ffffff; --text:#202124; --muted:#6b7280; --border:#e1e4e8;
+}
+*{box-sizing:border-box;}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);}
+#app{min-height:100vh;display:flex;flex-direction:column;}
+a{color:var(--blue);}
+.header{background:linear-gradient(90deg,var(--blue),var(--blue-dark));color:#fff;padding:14px 16px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:50;}
+.header .title{font-size:20px;font-weight:700;flex:1;}
+.icon-btn{background:none;border:none;color:#fff;font-size:22px;cursor:pointer;padding:6px;}
+.avatar{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.3);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;}
+.main{flex:1;padding:16px;max-width:720px;margin:0 auto;width:100%;padding-bottom:70px;}
+.footer{text-align:center;color:var(--muted);font-size:11px;padding:16px;background:#eceff1;}
+
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;border-radius:10px;padding:14px;font-weight:700;font-size:15px;cursor:pointer;border:1px solid transparent;width:100%;letter-spacing:.3px;}
+.btn-primary{background:var(--blue);color:#fff;}
+.btn-outline{background:#fff;color:var(--blue);border-color:var(--blue);}
+.btn-danger{background:#fff;color:var(--red);border-color:var(--red);}
+.btn-sm{padding:8px 12px;font-size:13px;width:auto;}
+.btn-row{display:flex;gap:10px;}
+.btn-row .btn{flex:1;}
+
+.card{background:var(--card);border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);border-left:4px solid transparent;}
+.card.status-open{border-left-color:#9aa1a9;}
+.card.status-assigned{border-left-color:#1565c0;}
+.card.status-posted_pickup,.card.status-posted_return{border-left-color:#8e44ad;}
+.card.status-delivered{border-left-color:#00897b;}
+.card.status-finished{border-left-color:#f39c12;}
+.card.status-completed{border-left-color:#2e8b57;}
+.card.status-not_covered{border-left-color:#c0392b;}
+.card.status-cancelled{border-left-color:#555;}
+
+.badge{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;}
+.badge.status-open{background:#9aa1a9;}
+.badge.status-assigned{background:#1565c0;}
+.badge.status-posted_pickup,.badge.status-posted_return{background:#8e44ad;}
+.badge.status-delivered{background:#00897b;}
+.badge.status-finished{background:#f39c12;}
+.badge.status-completed{background:#2e8b57;}
+.badge.status-not_covered{background:#c0392b;}
+.badge.status-cancelled{background:#555;}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block;}
+.dot.green{background:var(--green);} .dot.amber{background:var(--amber);} .dot.gray{background:var(--gray);}
+
+input,select,textarea{width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:15px;background:#fff;color:var(--text);font-family:inherit;}
+label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px;font-weight:600;}
+.field{margin-bottom:6px;}
+.chip-row{display:flex;gap:8px;flex-wrap:wrap;}
+.chip{padding:8px 14px;border-radius:999px;border:1px solid var(--border);background:#fff;cursor:pointer;font-size:13px;font-weight:600;}
+.chip.active{background:var(--blue);color:#fff;border-color:var(--blue);}
+.toggle{display:flex;align-items:center;justify-content:space-between;padding:10px 0;}
+.switch{position:relative;width:46px;height:26px;border-radius:13px;background:var(--border);cursor:pointer;flex-shrink:0;}
+.switch.on{background:var(--blue);}
+.switch .knob{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .15s;}
+.switch.on .knob{left:23px;}
+
+.tabs{display:flex;overflow-x:auto;gap:18px;border-bottom:1px solid var(--border);margin-bottom:14px;-webkit-overflow-scrolling:touch;}
+.tab{padding:10px 2px;white-space:nowrap;color:var(--muted);font-weight:700;font-size:14px;border-bottom:3px solid transparent;cursor:pointer;display:flex;align-items:center;gap:6px;}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue);}
+.tab .count{background:var(--blue-light);color:var(--blue);border-radius:999px;padding:1px 8px;font-size:12px;}
+.tab.active .count{background:var(--blue);color:#fff;}
+
+.list-item{display:flex;justify-content:space-between;align-items:center;padding:14px;background:#fff;border-radius:10px;margin-bottom:8px;box-shadow:0 1px 2px rgba(0,0,0,.06);}
+.list-item .name{font-weight:700;}
+.list-item .sub{font-size:13px;color:var(--muted);}
+
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:100;}
+.modal{background:#fff;border-radius:16px 16px 0 0;padding:20px;width:100%;max-width:720px;max-height:92vh;overflow-y:auto;}
+@media(min-width:760px){.modal-overlay{align-items:center;} .modal{border-radius:16px;}}
+.modal h2{margin-top:0;}
+.modal-close{float:right;background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);}
+
+.section-title{font-size:22px;font-weight:800;margin:4px 0 14px;}
+.step-num{width:28px;height:28px;border-radius:50%;background:var(--border);color:#555;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;margin-right:10px;flex-shrink:0;}
+.step-head{display:flex;align-items:flex-start;gap:0;margin-bottom:8px;}
+.step-head .step-text b{display:block;font-size:17px;}
+.step-head .step-text span{font-size:13px;color:var(--muted);}
+hr.sep{border:none;border-top:1px solid var(--border);margin:18px 0;}
+
+.accordion-head{display:flex;align-items:center;gap:10px;padding:14px;background:#fff;border-radius:10px;cursor:pointer;font-weight:700;margin-bottom:6px;}
+.accordion-body{padding:12px 4px;}
+
+.empty{text-align:center;color:var(--muted);padding:30px 10px;font-size:14px;}
+.search-wrap{position:relative;margin-bottom:10px;}
+.hamburger-menu{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;display:flex;}
+.hamburger-panel{background:#fff;width:260px;height:100%;padding:16px;}
+.hamburger-panel .nav-item{padding:14px 10px;border-radius:8px;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:10px;}
+.hamburger-panel .nav-item.active{background:var(--blue-light);color:var(--blue);}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;z-index:300;}
+.msg-box{background:#f8f9fa;border:1px dashed var(--border);border-radius:8px;padding:10px;font-size:13px;white-space:pre-wrap;margin-top:6px;}
+.pill-outline{border:1px solid var(--border);border-radius:999px;padding:6px 12px;font-size:13px;background:#fff;}
+.error-text{color:var(--red);font-size:13px;margin-top:6px;}
+.row-between{display:flex;justify-content:space-between;align-items:center;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* ============================= Supabase ============================= */
+const SUPABASE_URL = 'https://icghbewmvapvrxmwxlyg.supabase.co';
+const SUPABASE_KEY = 'sb_publishable__1M7GqXmmDuYI_vPs8hB4g_GRWe6EQG';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ============================= State ============================= */
+const state = {
+  session: null,
+  profile: null,          // {id, email, role}
+  route: 'dashboard',     // dashboard | dispatch | clients | volunteers | drivers | history | settings | client | volunteer | driver
+  routeId: null,
+  menuOpen: false,
+  modal: null,            // {type:'newRequest'|'editRequest'|'addClient'|...}
+  draft: {},
+  dispatchTab: 'open',
+  dispatchSearch: '',
+  listFilter: 'active',   // active | inactive | all (per list page)
+  settingsExpanded: {},
+  toast: null,
+  authMode: 'login',      // login | signup
+  authError: '', authInfo: '',
+  clients: [], volunteers: [], drivers: [], requests: [], profiles: [], invites: [],
+  settings: { mashilach_address:'', mashilach_note:'', post_message_template:{before:'',between:' to ',after:''},
+    driver_message_pickup_template:'Laundry pickup — Request #{request_id}\n\nPick up from: {client_name}\n{client_address}\n{client_note}\nBags: {bags}\nWhen: {requested_for}\n\nDeliver to: {volunteer_name}\n{volunteer_address}\n{volunteer_note}',
+    driver_message_return_template:'Laundry return — Request #{request_id}\n\nPick up from: {volunteer_name}\n{volunteer_address}\n{volunteer_note}\n\nDeliver to: {client_name}\n{client_address}\n{client_note}' },
+  loading: true,
+};
+
+const STATUS_FLOW = ['open','assigned','posted_pickup','delivered','finished','posted_return','completed'];
+const STATUS_LABELS = {
+  open:'Open', assigned:'Assigned', posted_pickup:'Posted', delivered:'Delivered',
+  finished:'Finished', posted_return:'Posted', completed:'Completed',
+  not_covered:'Not Covered', cancelled:'Cancelled'
+};
+const ALL_STATUSES = [...STATUS_FLOW, 'not_covered', 'cancelled'];
+// Both legs share the status name "Posted"; tabs and menus say which leg
+const TAB_LABELS = { posted_pickup:'Posted · Pickup', posted_return:'Posted · Return' };
+
+function render(){ const r = routes[state.route] || routes.dashboard; document.getElementById('app').innerHTML = layout(r()); afterRender(); }
+
+function afterRender(){
+  if(state.route === 'dispatch'){
+    requestAnimationFrame(()=>{
+      const el = document.querySelector('.tab.active');
+      if(el) el.scrollIntoView({behavior:'instant', inline:'center', block:'nearest'});
+    });
+  }
+}
+
+/* ============================= Helpers ============================= */
+function toLocalInputValue(d){
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fmtDateTime(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
+}
+const PERSON_STATUS = { active:'Active', inactive:'Inactive', temporary_inactive:'Temporary Inactive' };
+function initials(name){ if(!name) return '?'; return name.trim().split(/\s+/).slice(0,2).map(s=>s[0]).join('').toUpperCase(); }
+function byId(arr,id){ return arr.find(x=>String(x.id)===String(id)); }
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function streetOnly(address){
+  if(!address) return '';
+  let a = address.split(',')[0].trim();
+  a = a.replace(/^\d+\s+/, ''); // leading house number
+  a = a.replace(/\b(street|st|avenue|ave|road|rd|drive|dr|lane|ln|boulevard|blvd|court|ct|place|pl|way|terrace|ter)\.?$/i, '').trim();
+  return a || address;
+}
+function shortLegMessage(req, leg){
+  const client = byId(state.clients, req.client_id);
+  const vol = byId(state.volunteers, req.volunteer_id);
+  const clientSt = streetOnly(client?.address);
+  const volSt = streetOnly(vol?.address);
+  const t = state.settings.post_message_template || {before:'',between:' to ',after:''};
+  const [from,to] = leg === 'return' ? [volSt, clientSt] : [clientSt, volSt];
+  return `${t.before||''}${from}${t.between||' to '}${to}${t.after||''}`;
+}
+function renderTemplate(tmpl, vars){
+  const lines = (tmpl||'').split('\n').map(line=>{
+    const keys = [...line.matchAll(/\{(\w+)\}/g)].map(m=>m[1]).filter(k=> k in vars);
+    // drop a line whose placeholders all came out empty (a missing note, "Bags:" on the return leg)
+    if(keys.length && keys.every(k=> vars[k]==null || String(vars[k]).trim()==='')) return null;
+    return line.replace(/\{(\w+)\}/g, (m,k)=> k in vars ? vars[k] : m);
+  });
+  return lines.filter(l=>l!==null).join('\n');
+}
+function driverMessage(req, leg){
+  const client = byId(state.clients, req.client_id);
+  const vol = byId(state.volunteers, req.volunteer_id);
+  const driver = byId(state.drivers, leg==='return' ? req.return_driver_id : req.pickup_driver_id);
+  const tmpl = leg==='return' ? state.settings.driver_message_return_template : state.settings.driver_message_pickup_template;
+  return renderTemplate(tmpl, {
+    request_id: req.id, driver_name: driver?.name||'',
+    client_name: client?.name||'', client_address: client?.address||'', client_phone: client?.phone||'', client_note: client?.note||'',
+    volunteer_name: vol?.name||'', volunteer_address: vol?.address||'', volunteer_phone: vol?.phone||'', volunteer_note: vol?.note||'',
+    // the washer packages freely on the return leg, so no bag count there
+    bags: leg==='return' ? '' : bagsLabel(req.bags), requested_for: fmtDateTime(req.requested_for), notes: req.notes||''
+  });
+}
+// Bag counts are stored as numbers; 4 means "4 or more"
+function bagsLabel(n){ if(!n) return '—'; return Number(n)>=4 ? '4+' : String(n); }
+function bagChips(){
+  return ['1','2','3','4'].map(b=>`<div class="chip ${String(state.draft.bags)===b?'active':''}" data-action="set-draft" data-field="bags" data-value="${b}">${b==='4'?'4+':b}</div>`).join('');
+}
+function phoneLink(phone){ return phone ? `<a href="tel:${esc(phone.replace(/[^\d+]/g,''))}">${esc(phone)}</a>` : 'No phone'; }
+function copyToClipboard(text){
+  navigator.clipboard?.writeText(text).then(()=>showToast('Copied to clipboard')).catch(()=>showToast('Could not copy'));
+}
+function showToast(msg){ state.toast = msg; render(); setTimeout(()=>{ state.toast=null; render(); }, 2200); }
+
+function volunteerReadiness(vol){
+  const completedTime = r => new Date(r.completed_at || r.updated_at).getTime();
+  const completed = state.requests.filter(r=>r.volunteer_id===vol.id && r.status==='completed')
+    .sort((a,b)=> completedTime(b) - completedTime(a));
+  if(completed.length===0) return 'gray';
+  const last = new Date(completedTime(completed[0]));
+  const days = (Date.now() - last.getTime()) / 86400000;
+  const threshold = vol.wash_frequency === 'twice_monthly' ? 15 : 30;
+  return days <= threshold ? 'green' : 'amber';
+}
+
+function activeFilter(list, key){
+  if(state.listFilter === 'all') return list;
+  if(state.listFilter === 'inactive') return list.filter(x=> x.status !== 'active');
+  return list.filter(x=> x.status === 'active');
+}
+
+/* ============================= Supabase data ============================= */
+async function loadAll(){
+  const [c,v,d,r,s,p,inv] = await Promise.all([
+    sb.from('clients').select('*').order('name'),
+    sb.from('volunteers').select('*').order('name'),
+    sb.from('drivers').select('*').order('name'),
+    sb.from('requests').select('*').order('id',{ascending:false}),
+    sb.from('app_settings').select('*').eq('id',1).maybeSingle(),
+    sb.from('profiles').select('*').order('email'),
+    sb.from('invites').select('*').order('created_at'),
+  ]);
+  const failed = [c,v,d,r,s].find(x=>x.error);
+  if(failed) showToast('Could not load data: ' + failed.error.message);
+  state.clients = c.data||[]; state.volunteers = v.data||[]; state.drivers = d.data||[];
+  state.requests = r.data||[]; state.profiles = p.data||[]; state.invites = inv.data||[];
+  if(s.data) state.settings = { ...state.settings, ...s.data };
+  state.loading = false;
+  render();
+  await revertExpiredTempInactive();
+}
+
+// Temporary Inactive volunteers go back to Active once their "until" date has passed
+async function revertExpiredTempInactive(){
+  const today = toLocalInputValue(new Date()).slice(0,10);
+  const expired = state.volunteers.filter(v=> v.status==='temporary_inactive' && v.temp_inactive_until && v.temp_inactive_until < today);
+  if(!expired.length) return;
+  for(const v of expired){ await updateVolunteer(v.id, {status:'active', temp_inactive_from:null, temp_inactive_until:null}); }
+  render();
+}
+
+function friendlyAuthError(error){
+  const m = error?.message || String(error);
+  if(/database error saving new user|not_invited|not been invited/i.test(m)) return "This email hasn't been invited yet. Ask your Editor to add it in Settings → Dispatcher access, then try again.";
+  if(/invalid login credentials/i.test(m)) return 'Wrong email or password.';
+  if(/email not confirmed/i.test(m)) return 'Please confirm your email first — check your inbox for the link.';
+  if(/already registered/i.test(m)) return 'This email already has an account. Tap "Log in" below.';
+  return m;
+}
+
+async function createRow(table, payload){ const {data,error} = await sb.from(table).insert(payload).select().single(); if(error){showToast(error.message); return null;} return data; }
+async function updateRow(table, id, payload){ const {data,error} = await sb.from(table).update(payload).eq('id', id).select().single(); if(error){showToast(error.message); return null;} return data; }
+async function deleteRow(table, id){ const {error} = await sb.from(table).delete().eq('id', id); if(error){showToast(error.message); return false;} return true; }
+
+async function createClient(p){ const d=await createRow('clients',p); if(d){ state.clients.push(d); state.clients.sort((a,b)=>a.name.localeCompare(b.name)); } return d; }
+async function updateClient(id,p){ const d=await updateRow('clients',id,p); if(d){ const i=state.clients.findIndex(x=>x.id===id); state.clients[i]=d; } return d; }
+async function createVolunteer(p){ const d=await createRow('volunteers',p); if(d){ state.volunteers.push(d); state.volunteers.sort((a,b)=>a.name.localeCompare(b.name)); } return d; }
+async function updateVolunteer(id,p){ const d=await updateRow('volunteers',id,p); if(d){ const i=state.volunteers.findIndex(x=>x.id===id); state.volunteers[i]=d; } return d; }
+async function createDriver(p){ const d=await createRow('drivers',p); if(d){ state.drivers.push(d); state.drivers.sort((a,b)=>a.name.localeCompare(b.name)); } return d; }
+async function updateDriver(id,p){ const d=await updateRow('drivers',id,p); if(d){ const i=state.drivers.findIndex(x=>x.id===id); state.drivers[i]=d; } return d; }
+async function createRequest(p){ const d=await createRow('requests',p); if(d){ state.requests.unshift(d); } return d; }
+async function updateRequest(id,p){ const d=await updateRow('requests',id,{...p, updated_at:new Date().toISOString()}); if(d){ const i=state.requests.findIndex(x=>x.id===id); state.requests[i]=d; } return d; }
+async function deleteRequest(id){ const ok=await deleteRow('requests',id); if(ok){ state.requests = state.requests.filter(x=>x.id!==id); } return ok; }
+async function updateSettings(p){ const {data,error} = await sb.from('app_settings').update(p).eq('id',1).select().single(); if(error){showToast(error.message); return;} state.settings = {...state.settings, ...data}; }
+async function addInvite(email){ const d=await createRow('invites',{email: email.toLowerCase().trim()}); if(d){ state.invites.push(d); } return d; }
+async function removeInvite(email){ const {error}=await sb.from('invites').delete().eq('email',email); if(!error) state.invites = state.invites.filter(i=>i.email!==email); }
+async function updateProfileRole(id, role){ const d=await updateRow('profiles', id, {role}); if(d){ const i=state.profiles.findIndex(x=>x.id===id); state.profiles[i]=d; } }
+async function removeProfile(id){ const ok = await deleteRow('profiles', id); if(ok){ state.profiles = state.profiles.filter(p=>p.id!==id); showToast('Removed from app access (their login still exists in Supabase Auth)'); } }
+
+/* ============================= Layout ============================= */
+function layout(innerHtml){
+  if(!state.session){ return authScreen(); }
+  if(state.session && !state.profile && !state.loading){
+    return `<div class="header"><span class="title">Nekius Dispatch</span></div>
+    <div class="main" style="max-width:420px;"><div class="card">
+      <b>No access yet</b>
+      <div class="sub" style="margin-top:6px;">You're signed in as ${esc(state.session.user?.email||'')}, but this account hasn't been given access. Ask an Editor to invite this email address.</div>
+      <div class="btn btn-outline" style="margin-top:14px;" data-action="logout">LOG OUT</div>
+    </div></div>`;
+  }
+  if(state.loading){ return `<div class="header"><span class="title">Nekius Dispatch</span></div><div class="main"><div class="empty">Loading…</div></div>`; }
+  const titles = {dashboard:'Dashboard',dispatch:'Dispatch',clients:'Clients',volunteers:'Volunteers',drivers:'Drivers',history:'Request History',settings:'Settings',client:'Client',volunteer:'Volunteer',driver:'Driver'};
+  return `
+    <div class="header">
+      <button class="icon-btn" data-action="toggle-menu">&#9776;</button>
+      <span class="title">${titles[state.route]||'Nekius Dispatch'}</span>
+      <div class="avatar">${esc(initials(state.profile?.email||'?'))}</div>
+    </div>
+    <div class="main">${innerHtml}</div>
+    <div class="footer">Nekius Dispatch &mdash; ${esc(state.profile?.role||'')}</div>
+    ${state.menuOpen ? hamburgerMenu() : ''}
+    ${state.modal ? modalHtml() : ''}
+    ${state.toast ? `<div class="toast">${esc(state.toast)}</div>` : ''}
+  `;
+}
+
+function hamburgerMenu(){
+  const items = [
+    ['dashboard','Dashboard'], ['dispatch','Dispatch'], ['clients','Clients'],
+    ['volunteers','Volunteers'], ['drivers','Drivers'], ['history','Request History'],
+  ];
+  if(state.profile?.role === 'editor') items.push(['settings','Settings']);
+  return `<div class="hamburger-menu" data-action="close-menu">
+    <div class="hamburger-panel">
+      <div style="font-weight:800;font-size:18px;margin-bottom:14px;">Nekius Dispatch</div>
+      ${items.map(([r,l])=>`<div class="nav-item ${state.route===r?'active':''}" data-nav="${r}">${l}</div>`).join('')}
+      <hr class="sep">
+      <div class="nav-item" data-action="logout">Log out</div>
+    </div>
+  </div>`;
+}
+
+/* ============================= Auth screen ============================= */
+function authScreen(){
+  const isLogin = state.authMode === 'login';
+  return `<div class="header"><span class="title">Nekius Dispatch</span></div>
+  <div class="main" style="max-width:420px;">
+    <div class="section-title">${isLogin?'Log in':'Sign up'}</div>
+    <div class="card">
+      <div class="field"><label>Email</label><input id="auth-email" type="email" autocomplete="username"></div>
+      <div class="field"><label>Password</label><input id="auth-password" type="password" autocomplete="${isLogin?'current-password':'new-password'}"></div>
+      ${state.authError ? `<div class="error-text">${esc(state.authError)}</div>` : ''}
+      ${state.authInfo ? `<div style="color:var(--green);font-size:13px;margin-top:6px;">${esc(state.authInfo)}</div>` : ''}
+      <div style="margin-top:16px;" class="btn btn-primary" data-action="${isLogin?'do-login':'do-signup'}">${isLogin?'LOG IN':'SIGN UP'}</div>
+      <div style="text-align:center;margin-top:14px;font-size:13px;color:var(--muted);">
+        ${isLogin ? `No account? <a data-action="switch-auth">Sign up</a>` : `Already have an account? <a data-action="switch-auth">Log in</a>`}
+      </div>
+      ${!isLogin ? `<div style="text-align:center;margin-top:10px;font-size:12px;color:var(--muted);">You must be invited by an editor first (or be the very first person to sign up).</div>`:''}
+    </div>
+  </div>`;
+}
+
+/* ============================= Dashboard ============================= */
+function dashboard(){
+  const active = s => state.requests.filter(r=> !['completed','not_covered','cancelled'].includes(r.status) && (s? r.status===s : true));
+  const openCount = active('open').length;
+  const inProgress = state.requests.filter(r=> STATUS_FLOW.includes(r.status) && r.status!=='open').length;
+  const completedToday = state.requests.filter(r=> r.status==='completed' && r.updated_at && new Date(r.updated_at).toDateString()===new Date().toDateString()).length;
+  return `
+    <div class="section-title">Welcome back</div>
+    <div class="card" data-nav="dispatch"><div class="row-between"><div><b>${openCount}</b><div class="sub">Open requests</div></div><span>&rarr;</span></div></div>
+    <div class="card" data-nav="dispatch"><div class="row-between"><div><b>${inProgress}</b><div class="sub">In progress</div></div><span>&rarr;</span></div></div>
+    <div class="card" data-nav="history"><div class="row-between"><div><b>${completedToday}</b><div class="sub">Completed today</div></div><span>&rarr;</span></div></div>
+    <div class="btn btn-primary" data-action="open-modal" data-modal="newRequest" style="margin-top:10px;">+ NEW REQUEST</div>
+  `;
+}
+
+/* ============================= Dispatch ============================= */
+function dispatch(){
+  const tabs = [...STATUS_FLOW, 'not_covered', 'cancelled'];
+  const counts = {}; tabs.forEach(t=> counts[t] = state.requests.filter(r=>r.status===t).length);
+  const q = state.dispatchSearch.trim();
+  let list = state.requests.filter(r=> r.status === state.dispatchTab);
+  if(q) list = list.filter(r=> String(r.id).includes(q));
+  return `
+    <div class="btn btn-primary" data-action="open-modal" data-modal="newRequest">+ NEW REQUEST</div>
+    <div class="search-wrap" style="margin-top:12px;">
+      <input placeholder="Search by request ID…" value="${esc(state.dispatchSearch)}" data-live="dispatchSearch">
+    </div>
+    <div class="tabs">
+      ${tabs.map(t=>`<div class="tab ${state.dispatchTab===t?'active':''}" data-action="dispatch-tab" data-tab="${t}">${TAB_LABELS[t]||STATUS_LABELS[t]}<span class="count">${counts[t]}</span></div>`).join('')}
+    </div>
+    ${list.length===0 ? `<div class="empty">No requests in ${TAB_LABELS[state.dispatchTab]||STATUS_LABELS[state.dispatchTab]}.</div>` : list.map(requestCard).join('')}
+  `;
+}
+
+function requestCard(r){
+  const client = byId(state.clients, r.client_id);
+  const vol = byId(state.volunteers, r.volunteer_id);
+  const pdriver = byId(state.drivers, r.pickup_driver_id);
+  const rdriver = byId(state.drivers, r.return_driver_id);
+  const leg = (r.status==='posted_pickup') ? 'pickup' : (r.status==='posted_return' ? 'return' : null);
+  return `<div class="card status-${r.status}">
+    <div class="row-between">
+      <b>#${r.id}</b>
+      ${statusBadgeInteractive(r)}
+    </div>
+    <div style="margin-top:8px;">
+      ${client ? `<div><span class="pill-outline" data-nav="client" data-id="${client.id}">${esc(client.name)}</span> &middot; ${bagsLabel(r.bags)} bag(s)</div>` : ''}
+      <div class="sub" style="margin-top:4px;">${fmtDateTime(r.requested_for)}</div>
+    </div>
+    ${vol ? `<div style="margin-top:8px;">Volunteer: <span class="pill-outline" data-nav="volunteer" data-id="${vol.id}">${esc(vol.name)}</span></div>` : ''}
+    ${pdriver ? `<div style="margin-top:6px;">Pickup driver: <span class="pill-outline" data-nav="driver" data-id="${pdriver.id}">${esc(pdriver.name)}</span></div>` : ''}
+    ${rdriver ? `<div style="margin-top:6px;">Return driver: <span class="pill-outline" data-nav="driver" data-id="${rdriver.id}">${esc(rdriver.name)}</span></div>` : ''}
+    <div class="btn-row" style="margin-top:12px;flex-wrap:wrap;">
+      ${['assigned','posted_pickup'].includes(r.status) ? `<button class="btn btn-outline btn-sm" data-action="copy-post" data-id="${r.id}" data-leg="pickup">Copy Post Msg</button>`:''}
+      ${r.status==='posted_pickup' ? `<button class="btn btn-outline btn-sm" data-action="copy-driver" data-id="${r.id}" data-leg="pickup">Copy Driver Msg</button>`:''}
+      ${['finished','posted_return'].includes(r.status) ? `<button class="btn btn-outline btn-sm" data-action="copy-post" data-id="${r.id}" data-leg="return">Copy Post Msg</button>`:''}
+      ${r.status==='posted_return' ? `<button class="btn btn-outline btn-sm" data-action="copy-driver" data-id="${r.id}" data-leg="return">Copy Driver Msg</button>`:''}
+      ${leg ? `<button class="btn btn-outline btn-sm" data-action="assign-driver" data-id="${r.id}" data-leg="${leg}">Assign ${leg==='pickup'?'Pickup':'Return'} Driver</button>`:''}
+      <button class="btn btn-outline btn-sm" data-action="open-modal" data-modal="editRequest" data-id="${r.id}">Edit</button>
+      <button class="btn btn-danger btn-sm" data-action="delete-request" data-id="${r.id}">Delete</button>
+    </div>
+  </div>`;
+}
+
+function statusBadgeInteractive(r){
+  return `<span class="badge status-${r.status}" data-action="status-menu" data-id="${r.id}">${STATUS_LABELS[r.status]} &#9662;</span>`;
+}
+
+/* ============================= Clients / Volunteers / Drivers lists ============================= */
+function listFilterBar(){
+  return `<div class="chip-row" style="margin-bottom:12px;">
+    <div class="chip ${state.listFilter==='active'?'active':''}" data-action="list-filter" data-f="active">Active</div>
+    <div class="chip ${state.listFilter==='inactive'?'active':''}" data-action="list-filter" data-f="inactive">Inactive</div>
+    <div class="chip ${state.listFilter==='all'?'active':''}" data-action="list-filter" data-f="all">All</div>
+  </div>`;
+}
+
+function clients(){
+  const list = activeFilter(state.clients);
+  return `
+    <div class="btn btn-primary" data-action="open-modal" data-modal="addClient">+ ADD CLIENT</div>
+    <div style="margin-top:12px;"><input placeholder="Search clients…" value="${esc(state.draft.clientSearch||'')}" data-live="draft.clientSearch"></div>
+    <div style="margin-top:12px;">${listFilterBar()}</div>
+    ${renderPeopleList(list.filter(c=>!state.draft.clientSearch || c.name.toLowerCase().includes(state.draft.clientSearch.toLowerCase())), 'client', c=> c.is_mashilach ? 'Mashilach' : (c.phone||''))}
+  `;
+}
+function volunteers(){
+  const list = activeFilter(state.volunteers);
+  return `
+    <div class="btn btn-primary" data-action="open-modal" data-modal="addVolunteer">+ ADD VOLUNTEER</div>
+    <div style="margin-top:12px;"><input placeholder="Search volunteers…" value="${esc(state.draft.volSearch||'')}" data-live="draft.volSearch"></div>
+    <div style="margin-top:12px;">${listFilterBar()}</div>
+    ${renderPeopleList(list.filter(v=>!state.draft.volSearch || v.name.toLowerCase().includes(state.draft.volSearch.toLowerCase())), 'volunteer', v=> (v.phone||''), v=>`<span class="dot ${volunteerReadiness(v)}"></span>`)}
+  `;
+}
+function drivers(){
+  const list = activeFilter(state.drivers);
+  return `
+    <div class="btn btn-primary" data-action="open-modal" data-modal="addDriver">+ ADD DRIVER</div>
+    <div style="margin-top:12px;"><input placeholder="Search drivers…" value="${esc(state.draft.drvSearch||'')}" data-live="draft.drvSearch"></div>
+    <div style="margin-top:12px;">${listFilterBar()}</div>
+    ${renderPeopleList(list.filter(d=>!state.draft.drvSearch || d.name.toLowerCase().includes(state.draft.drvSearch.toLowerCase())), 'driver', d=> (d.phone||''))}
+  `;
+}
+function renderPeopleList(list, kind, subFn, prefixFn){
+  if(list.length===0) return `<div class="empty">No ${kind}s to show.</div>`;
+  return list.map(p=>`<div class="list-item" data-nav="${kind}" data-id="${p.id}">
+    <div>${prefixFn?prefixFn(p):''}<span class="name">${esc(p.name)}</span><div class="sub">${esc(subFn(p))}</div></div>
+    <span>&rarr;</span>
+  </div>`).join('');
+}
+
+/* ============================= Detail pages ============================= */
+function clientDetail(){
+  const c = byId(state.clients, state.routeId); if(!c) return `<div class="empty">Client not found.</div>`;
+  const reqs = state.requests.filter(r=>r.client_id===c.id);
+  return `
+    <div class="section-title">${esc(c.name)}</div>
+    <div class="card">
+      <div>${phoneLink(c.phone)}</div>
+      <div class="sub">${esc(c.address||'No address')}</div>
+      ${c.note ? `<div class="sub" style="margin-top:6px;">${esc(c.note)}</div>` : ''}
+      ${c.is_mashilach ? `<div style="margin-top:8px;"><span class="badge status-assigned">Mashilach</span></div>`:''}
+      <div class="btn-row" style="margin-top:14px;">
+        <button class="btn btn-outline" data-action="open-modal" data-modal="editClient" data-id="${c.id}">Edit</button>
+      </div>
+    </div>
+    <h3>Requests (${reqs.length})</h3>
+    ${reqs.length===0 ? `<div class="empty">No requests yet.</div>` : reqs.map(requestCard).join('')}
+  `;
+}
+function volunteerDetail(){
+  const v = byId(state.volunteers, state.routeId); if(!v) return `<div class="empty">Volunteer not found.</div>`;
+  const reqs = state.requests.filter(r=>r.volunteer_id===v.id);
+  const readiness = volunteerReadiness(v);
+  return `
+    <div class="section-title"><span class="dot ${readiness}"></span> ${esc(v.name)}</div>
+    <div class="card">
+      <div>${phoneLink(v.phone)}</div>
+      <div class="sub">${esc(v.address||'No address')}</div>
+      <div class="sub" style="margin-top:6px;">Status: ${esc(PERSON_STATUS[v.status]||v.status)} ${v.status==='temporary_inactive' && v.temp_inactive_until ? `(until ${esc(v.temp_inactive_until)})`:''}</div>
+      <div class="sub">Bag capacity: ${esc(v.bag_capacity==='4plus'?'4 bags plus':(v.bag_capacity||'—'))} &middot; Wash frequency: ${esc(v.wash_frequency==='twice_monthly'?'Twice a month':v.wash_frequency==='once_monthly'?'Once a month':'—')}</div>
+      <div class="btn-row" style="margin-top:14px;">
+        <button class="btn btn-outline" data-action="open-modal" data-modal="editVolunteer" data-id="${v.id}">Edit</button>
+      </div>
+    </div>
+    <h3>Requests (${reqs.length})</h3>
+    ${reqs.length===0 ? `<div class="empty">No requests yet.</div>` : reqs.map(requestCard).join('')}
+  `;
+}
+function driverDetail(){
+  const d = byId(state.drivers, state.routeId); if(!d) return `<div class="empty">Driver not found.</div>`;
+  const reqs = state.requests.filter(r=>r.pickup_driver_id===d.id || r.return_driver_id===d.id);
+  return `
+    <div class="section-title">${esc(d.name)}</div>
+    <div class="card">
+      <div>${phoneLink(d.phone)}</div>
+      <div class="sub">${esc(d.email||'No email')}</div>
+      <div class="sub">${esc(d.address||'No address')}</div>
+      <div style="margin-top:8px;" class="chip-row">
+        ${d.contact_sms ? `<span class="chip active">SMS</span>`:''}
+        ${d.contact_whatsapp ? `<span class="chip active">WhatsApp</span>`:''}
+      </div>
+      <div class="btn-row" style="margin-top:14px;">
+        <button class="btn btn-outline" data-action="open-modal" data-modal="editDriver" data-id="${d.id}">Edit</button>
+      </div>
+    </div>
+    <h3>Requests (${reqs.length})</h3>
+    ${reqs.length===0 ? `<div class="empty">No requests yet.</div>` : reqs.map(requestCard).join('')}
+  `;
+}
+
+/* ============================= History ============================= */
+function history(){
+  const list = state.requests.filter(r=>['completed','not_covered','cancelled'].includes(r.status));
+  return `<div class="section-title">Request History</div>
+    ${list.length===0 ? `<div class="empty">No finished requests yet.</div>` : list.map(requestCard).join('')}`;
+}
+
+/* ============================= Settings ============================= */
+function settingsSection(key, title, contentHtml){
+  const open = !!state.settingsExpanded[key];
+  return `<div class="accordion-head" data-action="toggle-settings" data-key="${key}">
+      <span>${open?'&#9662;':'&#9656;'}</span><span>${title}</span>
+    </div>
+    ${open ? `<div class="accordion-body card">${contentHtml}</div>` : ''}`;
+}
+function settings(){
+  if(state.profile?.role !== 'editor') return `<div class="empty">Settings are editor-only.</div>`;
+  const s = state.settings;
+  return `<div class="section-title">Settings</div>
+    ${settingsSection('mashilach','Mashilach default address', `
+      <div class="field"><label>Preset address</label><input id="set-mashilach-address" value="${esc(s.mashilach_address||'')}"></div>
+      <div class="field"><label>Preset note</label><textarea id="set-mashilach-note" rows="2">${esc(s.mashilach_note||'')}</textarea></div>
+      <div class="btn btn-primary btn-sm" style="margin-top:10px;" data-action="save-mashilach-settings">Save</div>
+    `)}
+    ${settingsSection('postmsg','Post Message wording', `
+      <div class="field"><label>Before</label><input id="set-pm-before" value="${esc(s.post_message_template?.before||'')}"></div>
+      <div class="field"><label>Between</label><input id="set-pm-between" value="${esc(s.post_message_template?.between||' to ')}"></div>
+      <div class="field"><label>After</label><input id="set-pm-after" value="${esc(s.post_message_template?.after||'')}"></div>
+      <div class="btn btn-primary btn-sm" style="margin-top:10px;" data-action="save-postmsg-settings">Save</div>
+    `)}
+    ${settingsSection('drivermsg','Driver Message templates', `
+      <div class="field"><label>Pickup leg template</label><textarea id="set-dm-pickup" rows="4">${esc(s.driver_message_pickup_template||'')}</textarea></div>
+      <div class="field"><label>Return leg template</label><textarea id="set-dm-return" rows="4">${esc(s.driver_message_return_template||'')}</textarea></div>
+      <div class="sub">Placeholders: {request_id} {driver_name} {client_name} {client_address} {client_phone} {client_note} {volunteer_name} {volunteer_address} {volunteer_phone} {volunteer_note} {bags} {requested_for} {notes}. A line whose placeholders are all empty is left out. {bags} is always empty on the return leg.</div>
+      <div class="btn btn-primary btn-sm" style="margin-top:10px;" data-action="save-drivermsg-settings">Save</div>
+    `)}
+    ${settingsSection('users','Dispatcher access', `
+      <h4>Invite a new dispatcher</h4>
+      <div class="sub">Add their email here, then tell them to open the app and tap "Sign up" using that same email.</div>
+      <div class="field" style="margin-top:8px;"><input id="new-invite-email" type="email" placeholder="email@example.com"></div>
+      <div class="btn btn-primary btn-sm" data-action="send-invite">Add invite</div>
+      ${state.invites.length ? `<div style="margin-top:12px;">${state.invites.map(i=>`<div class="list-item"><span>${esc(i.email)}</span><button class="btn btn-danger btn-sm" data-action="remove-invite" data-email="${esc(i.email)}">Remove</button></div>`).join('')}</div>` : ''}
+      <h4 style="margin-top:18px;">Current users</h4>
+      ${state.profiles.map(p=>`<div class="list-item">
+        <div><span class="name">${esc(p.email)}</span><div class="sub">${esc(p.role)}</div></div>
+        <div class="btn-row" style="width:auto;gap:6px;">
+          ${p.id!==state.profile.id ? `<button class="btn btn-outline btn-sm" data-action="toggle-role" data-id="${p.id}" data-role="${p.role==='editor'?'dispatcher':'editor'}">Make ${p.role==='editor'?'Dispatcher':'Editor'}</button>
+          <button class="btn btn-danger btn-sm" data-action="remove-user" data-id="${p.id}">Remove</button>` : `<span class="sub">You</span>`}
+        </div>
+      </div>`).join('')}
+    `)}
+  `;
+}
+
+const routes = { dashboard, dispatch, clients, volunteers, drivers, history, settings, client: clientDetail, volunteer: volunteerDetail, driver: driverDetail };
+
+/* ============================= Modals ============================= */
+function modalHtml(){
+  const m = state.modal;
+  const map = {
+    newRequest: newRequestModal, editRequest: editRequestModal,
+    addClient: ()=>personFormModal('client', null), editClient: ()=>personFormModal('client', m.id),
+    addVolunteer: ()=>personFormModal('volunteer', null), editVolunteer: ()=>personFormModal('volunteer', m.id),
+    addDriver: ()=>personFormModal('driver', null), editDriver: ()=>personFormModal('driver', m.id),
+    statusMenu: statusMenuModal,
+    assignDriver: assignDriverModal,
+  };
+  const fn = map[m.type];
+  return `<div class="modal-overlay" data-action="overlay-click"><div class="modal">
+    <button class="modal-close" data-action="close-modal">&times;</button>
+    ${fn ? fn() : ''}
+  </div></div>`;
+}
+
+function personFormModal(kind, id){
+  const existing = id ? byId(state[kind+'s'], id) : null;
+  const d = state.draft;
+  if(d._formKind !== kind || d._formId !== (id||'new')){
+    state.draft = { _formKind:kind, _formId:id||'new', ...(existing||{}) };
+  }
+  const titleKind = kind.charAt(0).toUpperCase()+kind.slice(1);
+  let fields = '';
+  if(kind==='client'){
+    fields = `
+      <div class="field"><label>Name</label><input data-bind="name" value="${esc(state.draft.name||'')}"></div>
+      <div class="field"><label>Phone</label><input data-bind="phone" value="${esc(state.draft.phone||'')}"></div>
+      <div class="toggle"><span>Mashilach</span><div class="switch ${state.draft.is_mashilach?'on':''}" data-action="toggle-mashilach"><div class="knob"></div></div></div>
+      <div class="field"><label>Address</label><input data-bind="address" value="${esc(state.draft.address||'')}"></div>
+      <div class="field"><label>Note</label><textarea data-bind="note" rows="2">${esc(state.draft.note||'')}</textarea></div>
+      ${statusToggleField(state.draft.status)}
+    `;
+  } else if(kind==='volunteer'){
+    fields = `
+      <div class="field"><label>Name</label><input data-bind="name" value="${esc(state.draft.name||'')}"></div>
+      <div class="field"><label>Phone</label><input data-bind="phone" value="${esc(state.draft.phone||'')}"></div>
+      <div class="field"><label>Address</label><input data-bind="address" value="${esc(state.draft.address||'')}"></div>
+      <div class="field"><label>Note</label><textarea data-bind="note" rows="2">${esc(state.draft.note||'')}</textarea></div>
+      <label>Bag capacity</label>
+      <div class="chip-row">${['1','2','3','4plus'].map(b=>`<div class="chip ${state.draft.bag_capacity===b?'active':''}" data-action="set-draft" data-field="bag_capacity" data-value="${b}">${b==='4plus'?'4 bags plus':b+' bag(s)'}</div>`).join('')}</div>
+      <label>Wash frequency</label>
+      <div class="chip-row">
+        <div class="chip ${state.draft.wash_frequency==='once_monthly'?'active':''}" data-action="set-draft" data-field="wash_frequency" data-value="once_monthly">Once a month</div>
+        <div class="chip ${state.draft.wash_frequency==='twice_monthly'?'active':''}" data-action="set-draft" data-field="wash_frequency" data-value="twice_monthly">Twice a month</div>
+      </div>
+      <label>Status</label>
+      <div class="chip-row">
+        ${['active','inactive','temporary_inactive'].map(s=>`<div class="chip ${state.draft.status===s?'active':''}" data-action="set-draft" data-field="status" data-value="${s}">${s==='temporary_inactive'?'Temp. Inactive':s.charAt(0).toUpperCase()+s.slice(1)}</div>`).join('')}
+      </div>
+      ${state.draft.status==='temporary_inactive' ? `
+      <div class="two-col">
+        <div class="field"><label>From</label><input type="date" data-bind="temp_inactive_from" value="${esc(state.draft.temp_inactive_from||'')}"></div>
+        <div class="field"><label>Until</label><input type="date" data-bind="temp_inactive_until" value="${esc(state.draft.temp_inactive_until||'')}"></div>
+      </div>`:''}
+    `;
+  } else if(kind==='driver'){
+    fields = `
+      <div class="field"><label>Name</label><input data-bind="name" value="${esc(state.draft.name||'')}"></div>
+      <div class="field"><label>Phone</label><input data-bind="phone" value="${esc(state.draft.phone||'')}"></div>
+      <div class="field"><label>Email</label><input data-bind="email" value="${esc(state.draft.email||'')}"></div>
+      <div class="field"><label>Address</label><input data-bind="address" value="${esc(state.draft.address||'')}"></div>
+      <label>Contact method</label>
+      <div class="chip-row">
+        <div class="chip ${state.draft.contact_sms?'active':''}" data-action="toggle-chip" data-field="contact_sms">SMS</div>
+        <div class="chip ${state.draft.contact_whatsapp?'active':''}" data-action="toggle-chip" data-field="contact_whatsapp">WhatsApp</div>
+      </div>
+      ${statusToggleField(state.draft.status)}
+    `;
+  }
+  return `<h2>${existing?'Edit':'Add'} ${titleKind}</h2>${fields}
+    <div class="btn-row" style="margin-top:18px;">
+      <button class="btn btn-outline" data-action="close-modal">Cancel</button>
+      <button class="btn btn-primary" data-action="save-person" data-kind="${kind}" data-id="${id||''}">Save</button>
+    </div>`;
+}
+function statusToggleField(status){
+  return `<label>Status</label><div class="chip-row">
+    <div class="chip ${status==='active'||!status?'active':''}" data-action="set-draft" data-field="status" data-value="active">Active</div>
+    <div class="chip ${status==='inactive'?'active':''}" data-action="set-draft" data-field="status" data-value="inactive">Inactive</div>
+  </div>`;
+}
+
+function newRequestModal(){
+  const d = state.draft;
+  if(d._formKind !== 'newRequest'){ state.draft = {_formKind:'newRequest', requested_for: toLocalInputValue(new Date()), bags:'1'}; }
+  return `<h2>Create New Request</h2>
+    <label>Client</label>
+    <select data-bind="client_id">
+      <option value="">Select client…</option>
+      ${activeFilter(state.clients).map(c=>`<option value="${c.id}" ${state.draft.client_id==c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+    </select>
+    <label>Bags</label>
+    <div class="chip-row">${bagChips()}</div>
+    <label>Requested for</label>
+    <input type="datetime-local" data-bind="requested_for" value="${esc(state.draft.requested_for||'')}">
+    <label>Volunteer (optional)</label>
+    <select data-bind="volunteer_id">
+      <option value="">Unassigned</option>
+      ${activeFilter(state.volunteers).map(v=>`<option value="${v.id}" ${state.draft.volunteer_id==v.id?'selected':''}>${esc(v.name)}</option>`).join('')}
+    </select>
+    <label>Notes</label>
+    <textarea data-bind="notes" rows="2">${esc(state.draft.notes||'')}</textarea>
+    <div class="btn-row" style="margin-top:18px;">
+      <button class="btn btn-outline" data-action="close-modal">Cancel</button>
+      <button class="btn btn-primary" data-action="save-new-request">Create Request</button>
+    </div>`;
+}
+
+function editRequestModal(){
+  const r = byId(state.requests, state.modal.id); if(!r) return '<div class="empty">Request not found.</div>';
+  const d = state.draft;
+  if(d._formKind !== 'editRequest' || d._formId !== r.id){
+    state.draft = {_formKind:'editRequest', _formId:r.id, ...r, requested_for: r.requested_for ? toLocalInputValue(new Date(r.requested_for)) : ''};
+  }
+  return `<h2>Edit Request #${r.id}</h2>
+    <label>Client</label>
+    <select data-bind="client_id">${state.clients.map(c=>`<option value="${c.id}" ${state.draft.client_id==c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
+    <label>Bags</label>
+    <div class="chip-row">${bagChips()}</div>
+    <label>Requested for</label>
+    <input type="datetime-local" data-bind="requested_for" value="${esc(state.draft.requested_for||'')}">
+    <label>Volunteer</label>
+    <select data-bind="volunteer_id"><option value="">Unassigned</option>${state.volunteers.map(v=>`<option value="${v.id}" ${state.draft.volunteer_id==v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select>
+    <label>Pickup driver</label>
+    <select data-bind="pickup_driver_id"><option value="">Unassigned</option>${state.drivers.map(dr=>`<option value="${dr.id}" ${state.draft.pickup_driver_id==dr.id?'selected':''}>${esc(dr.name)}</option>`).join('')}</select>
+    <label>Return driver</label>
+    <select data-bind="return_driver_id"><option value="">Unassigned</option>${state.drivers.map(dr=>`<option value="${dr.id}" ${state.draft.return_driver_id==dr.id?'selected':''}>${esc(dr.name)}</option>`).join('')}</select>
+    <label>Notes</label>
+    <textarea data-bind="notes" rows="2">${esc(state.draft.notes||'')}</textarea>
+    <div class="btn-row" style="margin-top:18px;">
+      <button class="btn btn-outline" data-action="close-modal">Cancel</button>
+      <button class="btn btn-primary" data-action="save-edit-request" data-id="${r.id}">Save Changes</button>
+    </div>`;
+}
+
+function statusMenuModal(){
+  const r = byId(state.requests, state.modal.id); if(!r) return '';
+  return `<h2>Set status for #${r.id}</h2>
+    ${ALL_STATUSES.map(s=>`<div class="list-item" data-action="set-status" data-id="${r.id}" data-status="${s}">
+        <span class="badge status-${s}">${TAB_LABELS[s]||STATUS_LABELS[s]}</span>${r.status===s?' <b>&check; current</b>':''}
+      </div>`).join('')}`;
+}
+
+function assignDriverModal(){
+  const r = byId(state.requests, state.modal.id); if(!r) return '';
+  const leg = state.modal.leg;
+  return `<h2>Assign ${leg==='pickup'?'Pickup':'Return'} Driver — #${r.id}</h2>
+    ${activeFilter(state.drivers).map(dr=>`<div class="list-item" data-action="pick-driver" data-id="${r.id}" data-leg="${leg}" data-driver="${dr.id}">
+      <span>${esc(dr.name)}</span><span class="sub">${esc(dr.phone||'')}</span>
+    </div>`).join('')}`;
+}
+
+/* ============================= Event delegation ============================= */
+let initialized = false;
+function initEvents(){
+  if(initialized) return; initialized = true;
+  document.addEventListener('click', async (e)=>{
+    if(e.target.closest('.modal-overlay') && !e.target.closest('.modal') && e.target.closest('[data-action="overlay-click"]')){
+      state.modal = null; state.draft = {}; render(); return;
+    }
+    const navEl = e.target.closest('[data-nav]');
+    const actionEl = e.target.closest('[data-action]');
+
+    // A nav element wins when it is nested inside the action element (e.g. menu items inside the menu overlay)
+    if(navEl && (!actionEl || actionEl.contains(navEl))){
+      const r = navEl.getAttribute('data-nav');
+      state.route = r; state.routeId = navEl.getAttribute('data-id')||null; state.menuOpen=false; state.modal=null; state.draft={};
+      render(); window.scrollTo(0,0); return;
+    }
+    if(!actionEl) return;
+    const action = actionEl.getAttribute('data-action');
+
+    switch(action){
+      case 'toggle-menu': state.menuOpen = !state.menuOpen; render(); break;
+      case 'close-menu': if(e.target===actionEl) { state.menuOpen=false; render(); } break;
+      case 'logout': await sb.auth.signOut(); state.session=null; state.profile=null; state.menuOpen=false; state.modal=null; state.draft={}; state.route='dashboard'; state.authMode='login'; state.authError=''; render(); break;
+      case 'switch-auth': state.authMode = state.authMode==='login'?'signup':'login'; state.authError=''; state.authInfo=''; render(); break;
+      case 'do-login': {
+        const email = document.getElementById('auth-email').value.trim();
+        const password = document.getElementById('auth-password').value;
+        const {error} = await sb.auth.signInWithPassword({email,password});
+        if(error){ state.authError = friendlyAuthError(error); state.authInfo=''; render(); } else { state.authInfo=''; await onAuthed(); }
+        break;
+      }
+      case 'do-signup': {
+        const email = document.getElementById('auth-email').value.trim();
+        const password = document.getElementById('auth-password').value;
+        if(!email || password.length < 6){ state.authError = 'Enter your email and a password of at least 6 characters.'; render(); break; }
+        const {data, error} = await sb.auth.signUp({email,password});
+        if(error){ state.authError = friendlyAuthError(error); render(); }
+        else if(!data.session){ state.authMode='login'; state.authError=''; state.authInfo = 'Account created. Check your email for a confirmation link, then come back and log in.'; render(); }
+        else { state.authError=''; await onAuthed(); }
+        break;
+      }
+      case 'open-modal': state.modal = {type: actionEl.getAttribute('data-modal'), id: actionEl.getAttribute('data-id')}; state.draft={}; render(); break;
+      case 'close-modal': state.modal = null; state.draft = {}; render(); break;
+      case 'dispatch-tab': state.dispatchTab = actionEl.getAttribute('data-tab'); render(); break;
+      case 'list-filter': state.listFilter = actionEl.getAttribute('data-f'); render(); break;
+      case 'toggle-settings': { const k=actionEl.getAttribute('data-key'); state.settingsExpanded[k]=!state.settingsExpanded[k]; render(); break; }
+      case 'toggle-mashilach': {
+        state.draft.is_mashilach = !state.draft.is_mashilach;
+        if(state.draft.is_mashilach){ state.draft.address = state.settings.mashilach_address||state.draft.address; state.draft.note = state.settings.mashilach_note||state.draft.note; }
+        render(); break;
+      }
+      case 'toggle-chip': { const f=actionEl.getAttribute('data-field'); state.draft[f]=!state.draft[f]; render(); break; }
+      case 'set-draft': { const f=actionEl.getAttribute('data-field'); state.draft[f]=actionEl.getAttribute('data-value'); render(); break; }
+      case 'save-person': await savePerson(actionEl.getAttribute('data-kind'), actionEl.getAttribute('data-id')||null); break;
+      case 'save-new-request': await saveNewRequest(); break;
+      case 'save-edit-request': await saveEditRequest(Number(actionEl.getAttribute('data-id'))); break;
+      case 'delete-request': if(confirm('Delete this request? This cannot be undone.')){ await deleteRequest(Number(actionEl.getAttribute('data-id'))); render(); } break;
+      case 'status-menu': state.modal = {type:'statusMenu', id:Number(actionEl.getAttribute('data-id'))}; render(); break;
+      case 'set-status': {
+        const id = Number(actionEl.getAttribute('data-id')); const status = actionEl.getAttribute('data-status');
+        await updateRequest(id, {status}); state.modal=null; state.dispatchTab = status; render(); break;
+      }
+      case 'assign-driver': state.modal = {type:'assignDriver', id:Number(actionEl.getAttribute('data-id')), leg: actionEl.getAttribute('data-leg')}; render(); break;
+      case 'pick-driver': {
+        const id = Number(actionEl.getAttribute('data-id')); const leg = actionEl.getAttribute('data-leg'); const driver = actionEl.getAttribute('data-driver');
+        const field = leg==='pickup' ? 'pickup_driver_id' : 'return_driver_id';
+        await updateRequest(id, {[field]: driver}); state.modal=null; render(); break;
+      }
+      case 'copy-post': {
+        const r = byId(state.requests, Number(actionEl.getAttribute('data-id'))); const leg = actionEl.getAttribute('data-leg');
+        copyToClipboard(shortLegMessage(r, leg)); break;
+      }
+      case 'copy-driver': {
+        const r = byId(state.requests, Number(actionEl.getAttribute('data-id'))); const leg = actionEl.getAttribute('data-leg');
+        copyToClipboard(driverMessage(r, leg)); break;
+      }
+      case 'save-mashilach-settings': await updateSettings({mashilach_address: document.getElementById('set-mashilach-address').value, mashilach_note: document.getElementById('set-mashilach-note').value}); showToast('Saved'); render(); break;
+      case 'save-postmsg-settings': await updateSettings({post_message_template: {before:document.getElementById('set-pm-before').value, between:document.getElementById('set-pm-between').value, after:document.getElementById('set-pm-after').value}}); showToast('Saved'); render(); break;
+      case 'save-drivermsg-settings': await updateSettings({driver_message_pickup_template: document.getElementById('set-dm-pickup').value, driver_message_return_template: document.getElementById('set-dm-return').value}); showToast('Saved'); render(); break;
+      case 'send-invite': {
+        const email = document.getElementById('new-invite-email').value.trim();
+        if(!/^\S+@\S+\.\S+$/.test(email)){ showToast('Enter a valid email'); break; }
+        if(await addInvite(email)) showToast('Invited — they can now sign up with ' + email);
+        break;
+      }
+      case 'remove-invite': await removeInvite(actionEl.getAttribute('data-email')); render(); break;
+      case 'toggle-role': await updateProfileRole(actionEl.getAttribute('data-id'), actionEl.getAttribute('data-role')); render(); break;
+      case 'remove-user': if(confirm('Remove this user\'s access?')){ await removeProfile(actionEl.getAttribute('data-id')); render(); } break;
+    }
+  });
+
+  document.addEventListener('input', (e)=>{
+    const liveEl = e.target.closest('[data-live]');
+    if(liveEl){
+      const path = liveEl.getAttribute('data-live').split('.');
+      if(path.length===1) state[path[0]] = liveEl.value;
+      else state[path[0]][path[1]] = liveEl.value;
+      // re-render so the list filters while typing, then put the cursor back
+      const key = liveEl.getAttribute('data-live'); const pos = liveEl.selectionStart;
+      render();
+      const again = document.querySelector(`[data-live="${key}"]`);
+      if(again){ again.focus(); try{ again.setSelectionRange(pos,pos); }catch(_){} }
+      return;
+    }
+    const bindEl = e.target.closest('[data-bind]');
+    if(bindEl){ state.draft[bindEl.getAttribute('data-bind')] = bindEl.value; }
+  });
+  document.addEventListener('change', (e)=>{
+    if(e.target.closest('[data-live]')) return;
+    const bindEl = e.target.closest('[data-bind]');
+    if(bindEl){ state.draft[bindEl.getAttribute('data-bind')] = bindEl.value; }
+  });
+}
+
+async function saveNewRequest(){
+  const d = state.draft;
+  if(!d.client_id){ showToast('Select a client'); return; }
+  const payload = {
+    client_id: d.client_id, bags: Number(d.bags)||1,
+    requested_for: d.requested_for ? new Date(d.requested_for).toISOString() : null,
+    volunteer_id: d.volunteer_id || null, notes: d.notes||'', status: d.volunteer_id ? 'assigned' : 'open'
+  };
+  const saved = await createRequest(payload);
+  if(!saved) return;
+  state.modal = null; state.draft = {}; state.route = 'dispatch'; state.dispatchTab = saved.status; render();
+}
+async function saveEditRequest(id){
+  const d = state.draft;
+  const saved = await updateRequest(id, {
+    client_id: d.client_id||null, bags: Number(d.bags)||1, volunteer_id: d.volunteer_id||null,
+    pickup_driver_id: d.pickup_driver_id||null, return_driver_id: d.return_driver_id||null,
+    requested_for: d.requested_for ? new Date(d.requested_for).toISOString() : null,
+    notes: d.notes||''
+  });
+  if(!saved) return;
+  state.modal = null; state.draft = {}; render();
+}
+async function savePerson(kind, id){
+  const COLS = {
+    client: ['name','phone','address','note','is_mashilach','status'],
+    volunteer: ['name','phone','address','note','status','temp_inactive_from','temp_inactive_until','bag_capacity','wash_frequency'],
+    driver: ['name','phone','email','address','contact_sms','contact_whatsapp','status'],
+  }[kind];
+  const d = {};
+  for(const k of COLS){ if(k in state.draft){ const val = state.draft[k]; d[k] = (typeof val==='string' && val.trim()==='') ? null : (typeof val==='string' ? val.trim() : val); } }
+  if(!d.name){ showToast('Name is required'); return; }
+  if(kind==='volunteer' && d.status!=='temporary_inactive'){ d.temp_inactive_from = null; d.temp_inactive_until = null; }
+  if(kind==='volunteer' && d.status==='temporary_inactive' && !d.temp_inactive_until){ showToast('Pick the "Until" date'); return; }
+  let saved = null;
+  if(kind==='client'){ saved = id ? await updateClient(id, d) : await createClient(d); }
+  if(kind==='volunteer'){ saved = id ? await updateVolunteer(id, d) : await createVolunteer(d); }
+  if(kind==='driver'){ saved = id ? await updateDriver(id, d) : await createDriver(d); }
+  if(!saved) return; // keep the form open so nothing typed is lost
+  state.modal = null; state.draft = {}; render();
+}
+
+/* ============================= Auth bootstrap ============================= */
+async function onAuthed(){
+  const {data:{session}} = await sb.auth.getSession();
+  state.session = session;
+  if(session){
+    const {data:profile} = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+    state.profile = profile;
+    if(!profile){ state.loading = false; render(); return; }
+    state.loading = true; render();
+    await loadAll();
+  } else {
+    render();
+  }
+}
+
+sb.auth.onAuthStateChange((event, session)=>{
+  state.session = session;
+  if(!session){ state.profile=null; state.loading=true; render(); }
+});
+
+initEvents();
+onAuthed();
+</script>
+</body>
+</html>
