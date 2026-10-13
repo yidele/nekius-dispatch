@@ -312,8 +312,7 @@ begin
           insert into requests (client_id, volunteer_id, pickup_driver_id, return_driver_id, bags, requested_for, notes, status, created_by, recurring_id)
           values (rr.client_id, rr.volunteer_id, rr.pickup_driver_id, rr.return_driver_id, rr.bags,
                   (d + rr.time_of_day) at time zone 'America/New_York', rr.notes,
-                  case when rr.volunteer_id is null then 'open' when rr.pickup_driver_id is null then 'assigned' else 'posted_pickup' end,
-                  rr.created_by, rr.id)
+                  'open', rr.created_by, rr.id)  -- always starts as Open
           returning id into new_id;
           update recurring_runs set request_id = new_id where recurring_id = rr.id and run_date = d;
           made := made + 1;

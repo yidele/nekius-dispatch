@@ -592,7 +592,7 @@ function authScreen(){
   <div class="main" style="max-width:420px;">
     <div class="section-title">${isLogin?'Log in':'Sign up'}</div>
     <div class="card">
-      ${!isLogin ? `<div class="field"><label>Your name</label><input id="auth-name" autocomplete="name" placeholder="></div>` : ''}
+      ${!isLogin ? `<div class="field"><label>Your name</label><input id="auth-name" autocomplete="name"></div>` : ''}
       <div class="field"><label>Email</label><input id="auth-email" type="email" autocomplete="username"></div>
       <div class="field"><label>Password</label><input id="auth-password" type="password" autocomplete="${isLogin?'current-password':'new-password'}"></div>
       ${state.authError ? `<div class="error-text">${esc(state.authError)}</div>` : ''}
@@ -774,7 +774,10 @@ function requestCard(r){
   const isDone = DONE.includes(r.status);
   let actions = '';
   switch(r.status){
-    case 'open': actions = assign('volunteer_id', 'Assign Volunteer') + (pdriver ? '' : btn('Assign Pickup Driver', 'truck', `data-action="assign-person" data-id="${r.id}" data-field="pickup_driver_id"`)); break;
+    case 'open': actions = vol
+        // filled in ahead of time (e.g. by a recurring request): confirm the volunteer to move on
+        ? advance('assigned', 'Confirm Volunteer', 'check') + (pdriver ? '' : btn('Assign Pickup Driver', 'truck', `data-action="assign-person" data-id="${r.id}" data-field="pickup_driver_id"`))
+        : assign('volunteer_id', 'Assign Volunteer') + (pdriver ? '' : btn('Assign Pickup Driver', 'truck', `data-action="assign-person" data-id="${r.id}" data-field="pickup_driver_id"`)); break;
     case 'assigned': actions = assign('pickup_driver_id', 'Assign Pickup Driver') + copyPost('pickup'); break;
     case 'posted_pickup': actions = pdriver ? advance('delivered', 'Delivered to Volunteer', 'box') + copyDriver('pickup')
                                             : assign('pickup_driver_id', 'Assign Pickup Driver') + copyPost('pickup'); break;
