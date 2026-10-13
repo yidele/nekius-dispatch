@@ -205,6 +205,7 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .count-pill.zero{background:var(--surface-2);color:var(--ink-faint);}
 .tag{display:inline-block;font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 9px;background:var(--st-completed-bg);color:var(--st-completed);}
 .tag.gray{background:var(--surface-2);color:var(--ink-soft);}
+.tag svg{width:11px;height:11px;vertical-align:-1px;}
 .tag.mash{background:var(--accent-light);color:var(--accent-ink);}
 .empty{text-align:center;color:var(--ink-faint);padding:36px 16px;font-size:14px;}
 .empty svg{display:block;margin:0 auto 8px;opacity:.55;}
@@ -294,7 +295,7 @@ const state = {
   toast: null,
   authMode: 'login',      // login | signup
   authError: '', authInfo: '',
-  clients: [], volunteers: [], drivers: [], requests: [], profiles: [], invites: [],
+  clients: [], volunteers: [], drivers: [], requests: [], profiles: [], invites: [], recurring: [],
   settings: { mashilach_address:'', mashilach_note:'', post_message_template:{before:'',between:' to ',after:''},
     driver_message_pickup_template:'Laundry pickup — Request #{request_id}\n\nPick up from: {client_name}\n{client_address}\n{client_note}\nBags: {bags}\nWhen: {requested_for}\n\nDeliver to: {volunteer_name}\n{volunteer_address}\n{volunteer_note}',
     driver_message_return_template:'Laundry return — Request #{request_id}\n\nPick up from: {volunteer_name}\n{volunteer_address}\n{volunteer_note}\n\nDeliver to: {client_name}\n{client_address}\n{client_note}' },
@@ -397,6 +398,7 @@ const ICONS = {
   clip:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="3" width="10" height="4" rx="1"/><path d="M7 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/></svg>',
   alert:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>',
   x:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+  repeat:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
   lock:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
 };
 function icon(name){ return ICONS[name] || ''; }
@@ -468,7 +470,9 @@ function volunteerReadiness(vol){
 
 /* ============================= Supabase data ============================= */
 async function loadAll(){
-  const [c,v,d,r,s,p,inv] = await Promise.all([
+  // make sure today's and tomorrow's recurring requests exist (the database also does this every hour)
+  try{ await sb.rpc('generate_recurring_requests'); }catch(_){}
+  const [c,v,d,r,s,p,inv,rec] = await Promise.all([
     sb.from('clients').select('*').order('name'),
     sb.from('volunteers').select('*').order('name'),
     sb.from('drivers').select('*').order('name'),
@@ -476,11 +480,12 @@ async function loadAll(){
     sb.from('app_settings').select('*').eq('id',1).maybeSingle(),
     sb.from('profiles').select('*').order('email'),
     sb.from('invites').select('*').order('created_at'),
+    sb.from('recurring_requests').select('*').order('id'),
   ]);
   const failed = [c,v,d,r,s].find(x=>x.error);
   if(failed) showToast('Could not load data: ' + failed.error.message);
   state.clients = c.data||[]; state.volunteers = v.data||[]; state.drivers = d.data||[];
-  state.requests = r.data||[]; state.profiles = p.data||[]; state.invites = inv.data||[];
+  state.requests = r.data||[]; state.profiles = p.data||[]; state.invites = inv.data||[]; state.recurring = rec.data||[];
   if(s.data) state.settings = { ...state.settings, ...s.data };
   state.loading = false;
   render();
@@ -542,9 +547,10 @@ function layout(innerHtml){
     </div></div>`;
   }
   if(state.loading){ return `<div class="header"><span class="title">Kvisa Dispatch</span></div><div class="main"><div class="empty">Loading…</div></div>`; }
-  const titles = {dashboard:'Dashboard',dispatch:'Dispatch',clients:'Clients',volunteers:'Volunteers',drivers:'Drivers',history:'Request History',settings:'Settings',client:'Client Details',volunteer:'Volunteer Details',driver:'Driver Details'};
+  const titles = {dashboard:'Dashboard',dispatch:'Dispatch',clients:'Clients',volunteers:'Volunteers',drivers:'Drivers',history:'Request History',recurring:'Recurring Requests',settings:'Settings',client:'Client Details',volunteer:'Volunteer Details',driver:'Driver Details'};
   // the round + button hides while a filter panel is open so it can't cover the panel's buttons
-  const fab = state.filterOpen[state.route] ? null : {clients:'addClient', volunteers:'addVolunteer', drivers:'addDriver'}[state.route];
+  const fab = state.filterOpen[state.route] ? null
+    : {clients:'addClient', volunteers:'addVolunteer', drivers:'addDriver', recurring: isEditor() ? 'recurringForm' : null}[state.route];
   return `
     <div class="header">
       <button class="icon-btn" data-action="toggle-menu" aria-label="Menu">${icon('menu')}</button>
@@ -563,7 +569,7 @@ function layout(innerHtml){
 function hamburgerMenu(){
   const items = [
     ['dashboard','Dashboard','dash'], ['dispatch','Dispatch','dispatch'], ['clients','Clients','client'],
-    ['volunteers','Volunteers','volunteer'], ['drivers','Drivers','driver'], ['history','Request History','history'],
+    ['volunteers','Volunteers','volunteer'], ['drivers','Drivers','driver'], ['recurring','Recurring Requests','repeat'], ['history','Request History','history'],
   ];
   if(state.profile?.role === 'editor') items.push(['settings','Settings','settings']);
   const current = {client:'clients', volunteer:'volunteers', driver:'drivers'}[state.route] || state.route;
@@ -781,7 +787,7 @@ function requestCard(r){
   if(!vol && !isDone && r.status !== 'open') actions = assign('volunteer_id', 'Assign Volunteer') + actions;
   return `<div class="card req-card status-${r.status}">
     <div class="req-head">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span class="req-id">#${r.id}</span>${statusBadgeInteractive(r)}${by ? `<span class="by">by ${esc(by)}</span>` : ''}</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span class="req-id">#${r.id}</span>${statusBadgeInteractive(r)}${r.recurring_id ? `<span class="tag gray">${icon('repeat')} Recurring</span>` : ''}${by ? `<span class="by">by ${esc(by)}</span>` : ''}</div>
       <div class="req-tools">
         <button class="icon-only" title="Edit request" data-action="open-modal" data-modal="editRequest" data-id="${r.id}">${ICON_EDIT}</button>
         <button class="icon-only danger" title="Delete request" data-action="delete-request" data-id="${r.id}">${ICON_TRASH}</button>
@@ -992,6 +998,66 @@ function driverDetail(){
     + requestsSection(reqs, 'driver', d.id) + recordMeta(d);
 }
 
+/* ============================= Recurring requests ============================= */
+function isEditor(){ return state.profile?.role === 'editor'; }
+function fmtTime(t){ if(!t) return ''; const [h,m] = t.split(':').map(Number); return new Date(2000,0,1,h,m).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
+function daysText(days){ return (days||[]).slice().sort().map(i=>DAY_SHORT[i]).join(', '); }
+// the request already created from a recurring one for a given day (if any)
+function generatedFor(t, day){ return state.requests.find(r=>r.recurring_id===t.id && r.requested_for && localDay(r.requested_for).getTime()===day.getTime()); }
+function recurringCard(t){
+  const client = byId(state.clients, t.client_id), vol = byId(state.volunteers, t.volunteer_id);
+  const pd = byId(state.drivers, t.pickup_driver_id), rd = byId(state.drivers, t.return_driver_id);
+  const assign = (field, label, primary) => `<button class="btn ${primary?'btn-primary':'btn-outline'}" data-action="assign-person" data-recurring="1" data-id="${t.id}" data-field="${field}">${icon(field==='volunteer_id'?'volunteer':'truck')} ${label}</button>`;
+  const box = (role, kind, p, field) => personBox(role, kind, p, {address: kind==='volunteer'}).replace('<span class="role">',
+    `<button class="box-x" title="Remove" data-action="unassign-recurring" data-id="${t.id}" data-field="${field}">${icon('x')}</button><span class="role">`);
+  const missing = [!vol && assign('volunteer_id','Assign Volunteer', true), !pd && assign('pickup_driver_id','Assign Pickup Driver'), !rd && assign('return_driver_id','Assign Return Driver')].filter(Boolean).join('');
+  return `<div class="card req-card" style="border-left-color:${t.active ? 'var(--primary)' : 'var(--line)'};${t.active ? '' : 'opacity:.65;'}">
+    <div class="req-head">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span class="req-id">${icon('repeat')} Every ${esc(daysText(t.days)) || '—'}</span><span class="sub">${fmtTime(t.time_of_day)}</span>${t.active ? '' : '<span class="tag gray">Paused</span>'}</div>
+      ${isEditor() ? `<div class="req-tools">
+        <button class="icon-only" title="Edit" data-action="open-modal" data-modal="recurringForm" data-id="${t.id}">${ICON_EDIT}</button>
+        <button class="icon-only danger" title="Delete" data-action="delete-recurring" data-id="${t.id}">${ICON_TRASH}</button>
+      </div>` : ''}
+    </div>
+    ${client ? `<div class="req-line">${icon('client')} <span class="name-link" data-nav="client" data-id="${client.id}">${esc(client.name)}</span>${client.phone ? ` &middot; ${telLink(client.phone)}` : ''}</div>
+      ${client.address ? `<div class="req-line">${icon('pin')} ${mapLink(client.address)}</div>` : ''}` : ''}
+    <div class="req-line">${icon('bag')} ${bagsLabel(t.bags)} bag's</div>
+    ${vol ? box('Volunteer','volunteer',vol,'volunteer_id') : ''}
+    ${pd ? box('Pickup driver','driver',pd,'pickup_driver_id') : ''}
+    ${rd ? box('Return driver','driver',rd,'return_driver_id') : ''}
+    ${t.notes ? `<div class="private">${esc(t.notes)}</div>` : ''}
+    ${missing || isEditor() ? `<div class="req-actions">${missing}${isEditor() ? `<button class="btn btn-outline" data-action="toggle-recurring-active" data-id="${t.id}">${t.active ? 'Pause' : 'Resume'}</button>` : ''}</div>` : ''}
+  </div>`;
+}
+function recurring(){
+  const today = localDay(new Date());
+  const week = [];
+  for(let i=0;i<7;i++){
+    const day = new Date(today); day.setDate(today.getDate()+i);
+    const items = state.recurring.filter(t=>t.active && (t.days||[]).includes(day.getDay()))
+      .sort((a,b)=> (a.time_of_day||'').localeCompare(b.time_of_day||''));
+    if(items.length) week.push({day, items});
+  }
+  const row = (t, day) => {
+    const c = byId(state.clients, t.client_id), v = byId(state.volunteers, t.volunteer_id);
+    const made = generatedFor(t, day);
+    return `<div class="req-row" ${made ? `data-action="go-request" data-id="${made.id}"` : ''} style="${made ? '' : 'cursor:default;'}">
+      <span class="sub" style="min-width:62px;">${fmtTime(t.time_of_day)}</span>
+      <span class="row-text"><b>${esc(c?.name||'—')}</b>${v ? ` &middot; ${esc(v.name)}` : ''}</span>
+      ${made ? `<span class="tag">#${made.id} in Dispatch</span>` : `<span class="tag gray">Not yet</span>`}
+    </div>`;
+  };
+  return `<div class="page-head"><h2>Recurring Requests</h2></div>
+    <div class="section-card" style="margin-top:0;">
+      <div class="section-head"><div class="section-name"><div class="icn">${icon('calendar')}</div><h3>This week</h3></div></div>
+      ${week.length ? week.map(w=>`<div class="date-group-label" style="margin:12px 0 6px;">${esc(dayLabel(w.day))}</div>${w.items.map(t=>row(t, w.day)).join('')}`).join('')
+        : `<div class="empty" style="padding:14px;">&mdash;</div>`}
+    </div>
+    <div class="date-group-label">All recurring requests</div>
+    ${state.recurring.length ? state.recurring.slice().sort((a,b)=> (b.active - a.active) || ((byId(state.clients,a.client_id)?.name||'').localeCompare(byId(state.clients,b.client_id)?.name||''))).map(recurringCard).join('')
+      : `<div class="empty">${icon('repeat')}<div>No recurring requests yet</div></div>`}`;
+}
+
 /* ============================= History ============================= */
 function history(){
   const list = state.requests.filter(r=>DONE.includes(r.status));
@@ -1050,7 +1116,7 @@ function settings(){
   `;
 }
 
-const routes = { dashboard, dispatch, clients, volunteers, drivers, history, settings, client: clientDetail, volunteer: volunteerDetail, driver: driverDetail };
+const routes = { dashboard, dispatch, clients, volunteers, drivers, recurring, history, settings, client: clientDetail, volunteer: volunteerDetail, driver: driverDetail };
 
 /* ============================= Modals ============================= */
 function modalHtml(){
@@ -1063,6 +1129,7 @@ function modalHtml(){
     statusMenu: statusMenuModal,
     assignPerson: assignPersonModal,
     myProfile: myProfileModal,
+    recurringForm: recurringFormModal,
   };
   const fn = map[m.type];
   return `<div class="modal-overlay" data-action="overlay-click"><div class="modal">
@@ -1242,17 +1309,40 @@ function statusMenuModal(){
 
 // Assign a volunteer / pickup driver / return driver straight from a request card
 function assignPersonModal(){
-  const r = byId(state.requests, state.modal.id); if(!r) return '';
+  const r = byId(state.modal.recurring ? state.recurring : state.requests, state.modal.id); if(!r) return '';
   const field = state.modal.field;
   const title = {volunteer_id:'Assign Volunteer', pickup_driver_id:'Assign Pickup Driver', return_driver_id:'Assign Return Driver'}[field];
   const client = byId(state.clients, r.client_id);
-  return `<h2>${title} &mdash; #${r.id}</h2>
-    <div class="sub" style="margin-bottom:10px;">${esc(client?.name||'')} &middot; ${fmtDateTime(r.requested_for)}</div>
+  return `<h2>${title}${state.modal.recurring ? '' : ` &mdash; #${r.id}`}</h2>
+    <div class="sub" style="margin-bottom:10px;">${esc(client?.name||'')} &middot; ${state.modal.recurring ? `Every ${esc(daysText(r.days))}` : fmtDateTime(r.requested_for)}</div>
     ${pickerSearchBox(field)}
     ${field==='volunteer_id' ? pickerVolControls() : ''}
     ${pickerResults(field)}`;
 }
 
+function recurringFormModal(){
+  const t = state.modal.id ? byId(state.recurring, state.modal.id) : null;
+  if(state.draft._formKind !== 'recurring'){
+    state.draft = t ? {_formKind:'recurring', ...t, time_of_day:(t.time_of_day||'10:00').slice(0,5), bags:String(t.bags)}
+                    : {_formKind:'recurring', days:[], time_of_day:'10:00', bags:'1', active:true};
+  }
+  const d = state.draft;
+  const optional = field => d[field] ? inlinePicker(field) + `<a class="sub" style="cursor:pointer;display:inline-block;margin-top:4px;" data-action="clear-field" data-field="${field}">Remove</a>` : inlinePicker(field);
+  return `<h2>${t ? 'Edit' : 'New'} Recurring Request</h2>
+    <label>Client</label>${inlinePicker('client_id')}
+    <label>Every</label>
+    <div class="chip-row">${WORK_DAYS.map(i=>`<div class="chip ${(d.days||[]).includes(i)?'active':''}" data-action="toggle-day" data-field="days" data-day="${i}">${DAY_SHORT[i]}</div>`).join('')}</div>
+    <label>Time</label><input type="time" data-bind="time_of_day" value="${esc(d.time_of_day||'')}">
+    <label>Bags</label><div class="chip-row">${bagChips()}</div>
+    <label>Volunteer</label>${d.volunteer_id || d._showVol ? optional('volunteer_id') : `<div class="btn btn-outline btn-sm" data-action="set-draft" data-field="_showVol" data-value="1">Choose a volunteer</div>`}
+    <label>Pickup driver</label>${d.pickup_driver_id || d._showPd ? optional('pickup_driver_id') : `<div class="btn btn-outline btn-sm" data-action="set-draft" data-field="_showPd" data-value="1">Choose a pickup driver</div>`}
+    <label>Return driver</label>${d.return_driver_id || d._showRd ? optional('return_driver_id') : `<div class="btn btn-outline btn-sm" data-action="set-draft" data-field="_showRd" data-value="1">Choose a return driver</div>`}
+    <label>Note</label><textarea data-bind="notes" rows="2">${esc(d.notes||'')}</textarea>
+    <div class="btn-row" style="margin-top:18px;">
+      <button class="btn btn-outline" data-action="close-modal">Cancel</button>
+      <button class="btn btn-primary" data-action="save-recurring">Save</button>
+    </div>`;
+}
 function myProfileModal(){
   const me = state.profile || {};
   if(state.draft._editing){
@@ -1345,9 +1435,10 @@ function initEvents(){
         render(); window.scrollTo(0,0); break;
       }
       case 'toggle-day': {
-        const day = Number(actionEl.getAttribute('data-day')); const days = new Set(state.draft.available_days||[]);
+        const field = actionEl.getAttribute('data-field') || 'available_days';
+        const day = Number(actionEl.getAttribute('data-day')); const days = new Set(state.draft[field]||[]);
         days.has(day) ? days.delete(day) : days.add(day);
-        state.draft.available_days = [...days].sort(); render(); break;
+        state.draft[field] = [...days].sort(); render(); break;
       }
       case 'push-person': {
         // open "Add client/volunteer/driver" on top of the current window; saving comes back here with it selected
@@ -1361,17 +1452,18 @@ function initEvents(){
       case 'pick': {
         const field = actionEl.getAttribute('data-field'); const value = actionEl.getAttribute('data-value');
         state.pickerSearch[field] = '';
-        if(state.modal?.type==='assignPerson'){ await assignToRequest(state.modal.id, field, value); }
+        if(state.modal?.type==='assignPerson'){ state.modal.recurring ? await assignToRecurring(state.modal.id, field, value) : await assignToRequest(state.modal.id, field, value); }
         else { state.draft[field] = value; render(); }
         break;
       }
       case 'unpick': { const f = actionEl.getAttribute('data-field'); state.draft[f] = null; state.pickerSearch[f] = ''; if(f==='volunteer_id') state.draft._showVol = '1'; render(); break; }
       case 'clear-field': state.draft[actionEl.getAttribute('data-field')] = null; render(); break;
       case 'assign-person': {
-        const r = byId(state.requests, Number(actionEl.getAttribute('data-id')));
-        state.modal = {type:'assignPerson', id:r.id, field: actionEl.getAttribute('data-field')};
+        const isRec = !!actionEl.getAttribute('data-recurring');
+        const r = byId(isRec ? state.recurring : state.requests, Number(actionEl.getAttribute('data-id')));
+        state.modal = {type:'assignPerson', id:r.id, field: actionEl.getAttribute('data-field'), recurring: isRec};
         state.modalStack = []; state.pickerSearch = {}; state.draft = {};
-        state.volDays = defaultVolDays(r.requested_for);
+        state.volDays = isRec ? (r.days||[]).filter(d=>d<6) : defaultVolDays(r.requested_for);
         render(); break;
       }
       case 'advance': {
@@ -1391,6 +1483,32 @@ function initEvents(){
         const saved = await updateRequest(id, patch);
         if(saved){ if(state.route==='dispatch') state.dispatchTab = saved.status; showToast(`Removed the ${who}`); }
         break;
+      }
+      case 'unassign-recurring': {
+        const id = Number(actionEl.getAttribute('data-id')), field = actionEl.getAttribute('data-field');
+        if(!confirm('Remove this person from the recurring request?')) break;
+        if(await updateRecurring(id, {[field]: null})) showToast('Removed');
+        break;
+      }
+      case 'toggle-recurring-active': {
+        const t = byId(state.recurring, Number(actionEl.getAttribute('data-id')));
+        if(await updateRecurring(t.id, {active: !t.active})) showToast(t.active ? 'Paused' : 'Resumed');
+        break;
+      }
+      case 'delete-recurring': {
+        const id = Number(actionEl.getAttribute('data-id'));
+        if(!confirm('Delete this recurring request? Requests it already created stay in Dispatch.')) break;
+        const {error} = await sb.from('recurring_requests').delete().eq('id', id);
+        if(error){ showToast(error.message); break; }
+        state.recurring = state.recurring.filter(t=>t.id!==id);
+        state.requests.forEach(r=>{ if(r.recurring_id===id) r.recurring_id = null; });
+        showToast('Deleted'); break;
+      }
+      case 'save-recurring': await saveRecurring(); break;
+      case 'go-request': {
+        const r = byId(state.requests, Number(actionEl.getAttribute('data-id')));
+        state.route = 'dispatch'; state.dispatchTab = r.status; state.dispatchSearch = String(r.id); state.navStack = [];
+        render(); window.scrollTo(0,0); break;
       }
       case 'toggle-expand': { const id = actionEl.getAttribute('data-id'); state.expanded[id] = !state.expanded[id]; render(); break; }
       case 'save-my-name': {
@@ -1516,6 +1634,36 @@ async function assignToRequest(id, field, value){
   showToast(next !== r.status ? `#${id} moved to ${TAB_LABELS[next]||STATUS_LABELS[next]}` : 'Saved');
 }
 
+async function updateRecurring(id, patch){
+  const d = await updateRow('recurring_requests', id, patch);
+  if(d){ const i = state.recurring.findIndex(x=>x.id===id); state.recurring[i] = d; render(); }
+  return d;
+}
+async function assignToRecurring(id, field, value){
+  const saved = await updateRecurring(id, {[field]: value});
+  if(!saved) return;
+  state.modal = null; state.draft = {}; state.modalStack = []; state.pickerSearch = {};
+  showToast('Saved — new requests will include this');
+}
+async function saveRecurring(){
+  const d = state.draft;
+  if(!d.client_id){ showToast('Select a client'); return; }
+  if(!(d.days||[]).length){ showToast('Choose at least one day'); return; }
+  const payload = {
+    client_id: d.client_id, days: d.days, time_of_day: d.time_of_day || '10:00', bags: Number(d.bags)||1,
+    volunteer_id: d.volunteer_id||null, pickup_driver_id: d.pickup_driver_id||null, return_driver_id: d.return_driver_id||null,
+    notes: (d.notes||'').trim() || null,
+  };
+  const id = state.modal.id ? Number(state.modal.id) : null;
+  let saved;
+  if(id) saved = await updateRecurring(id, payload);
+  else { saved = await createRow('recurring_requests', payload); if(saved) state.recurring.push(saved); }
+  if(!saved) return;
+  // if it's due today or tomorrow, put it in Dispatch right away
+  try{ const {data} = await sb.rpc('generate_recurring_requests'); if(data){ const r = await sb.from('requests').select('*').order('id',{ascending:false}); if(r.data) state.requests = r.data; } }catch(_){}
+  state.modal = null; state.draft = {}; render();
+  showToast('Saved');
+}
 async function saveNewRequest(){
   const d = state.draft;
   if(!d.client_id){ showToast('Select a client'); return; }
@@ -1562,7 +1710,7 @@ async function savePerson(kind, id){
   const prev = state.modalStack.pop();
   if(prev){
     // came here from a request: go back to it with the new person already chosen
-    if(prev.modal.type==='assignPerson'){ await assignToRequest(prev.modal.id, prev.field, saved.id); return; }
+    if(prev.modal.type==='assignPerson'){ prev.modal.recurring ? await assignToRecurring(prev.modal.id, prev.field, saved.id) : await assignToRequest(prev.modal.id, prev.field, saved.id); return; }
     state.modal = prev.modal; state.draft = {...prev.draft, [prev.field]: saved.id};
     state.pickerSearch[prev.field] = ''; render(); return;
   }

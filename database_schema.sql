@@ -245,3 +245,86 @@ $$;
 alter table clients add column if not exists created_by uuid default auth.uid() references profiles(id);
 alter table volunteers add column if not exists created_by uuid default auth.uid() references profiles(id);
 alter table drivers add column if not exists created_by uuid default auth.uid() references profiles(id);
+
+-- =========================================================
+-- 2026-10-13: Recurring requests
+-- Editors create them; every signed-in user can see them and fill in
+-- the volunteer / drivers. An hourly job (pg_cron) and the app on load
+-- call generate_recurring_requests(), which creates the real request for
+-- today and tomorrow (New York time) exactly once per date.
+-- =========================================================
+create table recurring_requests (
+  id bigint generated always as identity primary key,
+  client_id uuid not null references clients(id),
+  volunteer_id uuid references volunteers(id),
+  pickup_driver_id uuid references drivers(id),
+  return_driver_id uuid references drivers(id),
+  bags integer not null default 1 check (bags between 1 and 50),
+  days smallint[] not null default '{}',          -- 0 = Sunday … 5 = Friday
+  time_of_day time not null default '10:00',      -- New York time
+  notes text,
+  active boolean not null default true,
+  created_by uuid default auth.uid() references profiles(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create table recurring_runs (
+  recurring_id bigint not null references recurring_requests(id) on delete cascade,
+  run_date date not null,
+  request_id bigint references requests(id) on delete set null,
+  primary key (recurring_id, run_date)
+);
+alter table requests add column recurring_id bigint references recurring_requests(id) on delete set null;
+create trigger recurring_touch before update on recurring_requests for each row execute function touch_updated_at();
+
+create function recurring_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if not is_editor() and (
+    new.client_id is distinct from old.client_id or new.bags is distinct from old.bags or
+    new.days is distinct from old.days or new.time_of_day is distinct from old.time_of_day or
+    new.notes is distinct from old.notes or new.active is distinct from old.active
+  ) then
+    raise exception 'Only an editor can change a recurring request.';
+  end if;
+  return new;
+end;
+$$;
+create trigger recurring_guard before update on recurring_requests for each row execute function recurring_guard();
+
+alter table recurring_requests enable row level security;
+alter table recurring_runs enable row level security;
+create policy recurring_select_known on recurring_requests for select to authenticated using (is_known_user());
+create policy recurring_update_known on recurring_requests for update to authenticated using (is_known_user()) with check (is_known_user());
+create policy recurring_insert_editor on recurring_requests for insert to authenticated with check (is_editor());
+create policy recurring_manage_editor on recurring_requests for all to authenticated using (is_editor()) with check (is_editor());
+create policy runs_select_known on recurring_runs for select to authenticated using (is_known_user());
+
+create function generate_recurring_requests() returns integer language plpgsql security definer set search_path = public as $$
+declare
+  rr record; d date; new_id bigint; made integer := 0;
+  today date := (now() at time zone 'America/New_York')::date;
+begin
+  for rr in select * from recurring_requests where active loop
+    foreach d in array array[today, today + 1] loop
+      if extract(dow from d)::int = any(rr.days) then
+        insert into recurring_runs (recurring_id, run_date) values (rr.id, d) on conflict do nothing;
+        if found then
+          insert into requests (client_id, volunteer_id, pickup_driver_id, return_driver_id, bags, requested_for, notes, status, created_by, recurring_id)
+          values (rr.client_id, rr.volunteer_id, rr.pickup_driver_id, rr.return_driver_id, rr.bags,
+                  (d + rr.time_of_day) at time zone 'America/New_York', rr.notes,
+                  case when rr.volunteer_id is null then 'open' when rr.pickup_driver_id is null then 'assigned' else 'posted_pickup' end,
+                  rr.created_by, rr.id)
+          returning id into new_id;
+          update recurring_runs set request_id = new_id where recurring_id = rr.id and run_date = d;
+          made := made + 1;
+        end if;
+      end if;
+    end loop;
+  end loop;
+  return made;
+end;
+$$;
+revoke execute on function generate_recurring_requests() from public, anon;
+grant execute on function generate_recurring_requests() to authenticated;
+create extension if not exists pg_cron;
+select cron.schedule('kvisa-recurring-requests', '5 * * * *', 'select public.generate_recurring_requests()');
