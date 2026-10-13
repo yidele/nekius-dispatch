@@ -102,6 +102,40 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .error-text{color:var(--red);font-size:13px;margin-top:6px;}
 .row-between{display:flex;justify-content:space-between;align-items:center;}
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.req-head{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.req-head .by{font-size:12px;color:var(--muted);margin-left:8px;font-weight:400;}
+.req-tools{display:flex;align-items:center;gap:4px;}
+.icon-only{background:none;border:none;cursor:pointer;padding:6px;border-radius:8px;color:var(--muted);display:inline-flex;}
+.icon-only:hover{background:var(--bg);}
+.icon-only.danger{color:var(--red);}
+.icon-only svg{width:18px;height:18px;}
+.req-grid{display:grid;grid-template-columns:max-content 1fr;column-gap:12px;row-gap:6px;margin-top:10px;font-size:14px;align-items:baseline;}
+.req-grid .k{color:var(--muted);font-size:13px;}
+.req-grid .v{min-width:0;overflow-wrap:anywhere;}
+.req-grid .faded{font-size:11px;color:var(--muted);}
+.req-grid .faded .name-link{font-weight:500;}
+.name-link{color:var(--blue);font-weight:700;cursor:pointer;text-decoration:underline;text-decoration-color:rgba(21,101,192,.3);text-underline-offset:3px;}
+.req-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;}
+.req-actions .btn{width:auto;flex:1 1 140px;padding:10px 12px;font-size:13px;}
+.req-row{display:flex;align-items:center;gap:10px;background:#fff;border-radius:10px;padding:10px 12px;margin-bottom:6px;box-shadow:0 1px 2px rgba(0,0,0,.06);cursor:pointer;font-size:13px;}
+.req-row .row-text{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.req-row .sub{white-space:nowrap;font-size:12px;color:var(--muted);}
+.status-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.status-dot.status-completed{background:#2e8b57;} .status-dot.status-not_covered{background:#c0392b;} .status-dot.status-cancelled{background:#555;}
+.tag{display:inline-block;font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px;margin-left:6px;background:#e6f4ea;color:var(--green);}
+.tag.gray{background:var(--bg);color:var(--muted);}
+.picker-list{border:1px solid var(--border);border-radius:10px;margin-top:6px;max-height:300px;overflow-y:auto;}
+.picker-item{padding:11px 12px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.picker-item:last-child{border-bottom:none;}
+.picker-item:hover{background:var(--blue-light);}
+.picker-add{color:var(--blue);font-weight:700;}
+.picked{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px;border:1px solid var(--blue);border-radius:10px;background:var(--blue-light);}
+.picked a{cursor:pointer;font-weight:700;font-size:13px;}
+.sort-row{display:flex;align-items:center;gap:8px;}
+.sort-row label{margin:0;white-space:nowrap;}
+.sort-row select{padding:8px;}
+.private{background:#fff8e1;border-radius:8px;padding:8px 10px;font-size:13px;margin-top:8px;}
+.hint{font-size:12px;color:var(--muted);margin-top:2px;}
 </style>
 </head>
 <body>
@@ -134,6 +168,10 @@ const state = {
     driver_message_pickup_template:'Laundry pickup — Request #{request_id}\n\nPick up from: {client_name}\n{client_address}\n{client_note}\nBags: {bags}\nWhen: {requested_for}\n\nDeliver to: {volunteer_name}\n{volunteer_address}\n{volunteer_note}',
     driver_message_return_template:'Laundry return — Request #{request_id}\n\nPick up from: {volunteer_name}\n{volunteer_address}\n{volunteer_note}\n\nDeliver to: {client_name}\n{client_address}\n{client_note}' },
   loading: true,
+  modalStack: [],         // modals underneath the current one (e.g. New Request under Add Client)
+  pickerSearch: {},       // search text per picker field
+  expanded: {},           // finished requests opened from their one-line view
+  volSort: 'available', volDay: new Date().getDay(),
 };
 
 const STATUS_FLOW = ['open','assigned','posted_pickup','delivered','finished','posted_return','completed'];
@@ -168,6 +206,18 @@ function fmtDateTime(iso){
   return d.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
 }
 const PERSON_STATUS = { active:'Active', inactive:'Inactive', temporary_inactive:'Temporary Inactive' };
+const DAY_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const DAY_LONG = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const WASH_FREQ = { weekly:'Once a week', three_monthly:'Three times a month', twice_monthly:'Twice a month', once_monthly:'Once a month' };
+const WASH_DAYS = { weekly:7, three_monthly:10, twice_monthly:15, once_monthly:30 }; // days allowed between completed washes
+const DONE = ['completed','not_covered','cancelled'];
+function capacityLabel(c){ return c==='4plus' ? "4 bag's plus" : c ? `${c} bag's` : '—'; }
+function availableOn(v, day){ return (v.available_days||[]).includes(day); }
+function daysLabel(v){ return (v.available_days||[]).slice().sort().map(i=>DAY_SHORT[i]).join(', '); }
+function profileName(id){ const p = byId(state.profiles, id); return p ? (p.name || p.email.split('@')[0]) : ''; }
+function fmtShortDate(iso){ return iso ? new Date(iso).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : ''; }
+const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+const ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
 function initials(name){ if(!name) return '?'; return name.trim().split(/\s+/).slice(0,2).map(s=>s[0]).join('').toUpperCase(); }
 function byId(arr,id){ return arr.find(x=>String(x.id)===String(id)); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -207,7 +257,7 @@ function driverMessage(req, leg){
     client_name: client?.name||'', client_address: client?.address||'', client_phone: client?.phone||'', client_note: client?.note||'',
     volunteer_name: vol?.name||'', volunteer_address: vol?.address||'', volunteer_phone: vol?.phone||'', volunteer_note: vol?.note||'',
     // the washer packages freely on the return leg, so no bag count there
-    bags: leg==='return' ? '' : bagsLabel(req.bags), requested_for: fmtDateTime(req.requested_for), notes: req.notes||''
+    bags: leg==='return' ? '' : bagsLabel(req.bags), requested_for: fmtDateTime(req.requested_for)
   });
 }
 // Bag counts are stored as numbers; 4 means "4 or more"
@@ -228,7 +278,7 @@ function volunteerReadiness(vol){
   if(completed.length===0) return 'gray';
   const last = new Date(completedTime(completed[0]));
   const days = (Date.now() - last.getTime()) / 86400000;
-  const threshold = vol.wash_frequency === 'twice_monthly' ? 15 : 30;
+  const threshold = WASH_DAYS[vol.wash_frequency] || 30;
   return days <= threshold ? 'green' : 'amber';
 }
 
@@ -291,8 +341,8 @@ async function createRequest(p){ const d=await createRow('requests',p); if(d){ s
 async function updateRequest(id,p){ const d=await updateRow('requests',id,{...p, updated_at:new Date().toISOString()}); if(d){ const i=state.requests.findIndex(x=>x.id===id); state.requests[i]=d; } return d; }
 async function deleteRequest(id){ const ok=await deleteRow('requests',id); if(ok){ state.requests = state.requests.filter(x=>x.id!==id); } return ok; }
 async function updateSettings(p){ const {data,error} = await sb.from('app_settings').update(p).eq('id',1).select().single(); if(error){showToast(error.message); return;} state.settings = {...state.settings, ...data}; }
-async function addInvite(email){
-  const {data:d,error} = await sb.from('invites').upsert({email: email.toLowerCase().trim()}).select().single();
+async function addInvite(email, role){
+  const {data:d,error} = await sb.from('invites').upsert({email: email.toLowerCase().trim(), role: role||'dispatcher'}).select().single();
   if(error){ showToast(error.message); return null; }
   state.invites = state.invites.filter(i=>i.email!==d.email).concat(d); return d;
 }
@@ -319,7 +369,7 @@ function layout(innerHtml){
     <div class="header">
       <button class="icon-btn" data-action="toggle-menu">&#9776;</button>
       <span class="title">${titles[state.route]||'Nekius Dispatch'}</span>
-      <div class="avatar">${esc(initials(state.profile?.email||'?'))}</div>
+      <div class="avatar">${esc(initials(state.profile?.name||state.profile?.email||'?'))}</div>
     </div>
     <div class="main">${innerHtml}</div>
     <div class="footer">Nekius Dispatch &mdash; ${esc(state.profile?.role||'')}</div>
@@ -340,6 +390,7 @@ function hamburgerMenu(){
       <div style="font-weight:800;font-size:18px;margin-bottom:14px;">Nekius Dispatch</div>
       ${items.map(([r,l])=>`<div class="nav-item ${state.route===r?'active':''}" data-nav="${r}">${l}</div>`).join('')}
       <hr class="sep">
+      <div class="nav-item" data-action="open-modal" data-modal="myName">My name: ${esc(state.profile?.name || 'not set')}</div>
       <div class="nav-item" data-action="logout">Log out</div>
     </div>
   </div>`;
@@ -352,6 +403,7 @@ function authScreen(){
   <div class="main" style="max-width:420px;">
     <div class="section-title">${isLogin?'Log in':'Sign up'}</div>
     <div class="card">
+      ${!isLogin ? `<div class="field"><label>Your name</label><input id="auth-name" autocomplete="name" placeholder="Shown on requests you create"></div>` : ''}
       <div class="field"><label>Email</label><input id="auth-email" type="email" autocomplete="username"></div>
       <div class="field"><label>Password</label><input id="auth-password" type="password" autocomplete="${isLogin?'current-password':'new-password'}"></div>
       ${state.authError ? `<div class="error-text">${esc(state.authError)}</div>` : ''}
@@ -372,7 +424,8 @@ function dashboard(){
   const inProgress = state.requests.filter(r=> STATUS_FLOW.includes(r.status) && r.status!=='open').length;
   const completedToday = state.requests.filter(r=> r.status==='completed' && r.updated_at && new Date(r.updated_at).toDateString()===new Date().toDateString()).length;
   return `
-    <div class="section-title">Welcome back</div>
+    <div class="section-title">Welcome back${state.profile?.name ? ', ' + esc(state.profile.name) : ''}</div>
+    ${!state.profile?.name ? `<div class="card" style="background:var(--blue-light);"><b>Add your name</b><div class="sub">So everyone can see who created each request.</div><div class="btn btn-primary btn-sm" style="margin-top:10px;" data-action="open-modal" data-modal="myName">Set my name</div></div>` : ''}
     <div class="card" data-nav="dispatch"><div class="row-between"><div><b>${openCount}</b><div class="sub">Open requests</div></div><span>&rarr;</span></div></div>
     <div class="card" data-nav="dispatch"><div class="row-between"><div><b>${inProgress}</b><div class="sub">In progress</div></div><span>&rarr;</span></div></div>
     <div class="card" data-nav="history"><div class="row-between"><div><b>${completedToday}</b><div class="sub">Completed today</div></div><span>&rarr;</span></div></div>
@@ -399,33 +452,70 @@ function dispatch(){
   `;
 }
 
+function personLink(kind, p){
+  return p ? `<span class="name-link" data-nav="${kind}" data-id="${p.id}">${esc(p.name)}</span>` : `<span class="sub">Not assigned yet</span>`;
+}
+
+// One-line summary used for Completed / Not Covered / Cancelled; tap to open the full card
+function requestRow(r){
+  const c = byId(state.clients, r.client_id), v = byId(state.volunteers, r.volunteer_id);
+  const pd = byId(state.drivers, r.pickup_driver_id), rd = byId(state.drivers, r.return_driver_id);
+  const by = profileName(r.created_by);
+  const parts = [c?.name || 'No client', v && `Vol: ${v.name}`, pd && `Pickup: ${pd.name}`, rd && `Return: ${rd.name}`, by && `by ${by}`].filter(Boolean);
+  return `<div class="req-row" data-action="toggle-expand" data-id="${r.id}">
+    <span class="status-dot status-${r.status}" title="${STATUS_LABELS[r.status]}"></span>
+    <b>#${r.id}</b><span class="row-text">${parts.map(esc).join(' · ')}</span>
+    <span class="sub">${fmtShortDate(r.completed_at || r.updated_at)}</span>
+  </div>`;
+}
+
 function requestCard(r){
+  if(DONE.includes(r.status) && !state.expanded[r.id]) return requestRow(r);
   const client = byId(state.clients, r.client_id);
   const vol = byId(state.volunteers, r.volunteer_id);
   const pdriver = byId(state.drivers, r.pickup_driver_id);
   const rdriver = byId(state.drivers, r.return_driver_id);
-  const leg = (r.status==='posted_pickup') ? 'pickup' : (r.status==='posted_return' ? 'return' : null);
+  const by = profileName(r.created_by);
+  const step = STATUS_FLOW.indexOf(r.status);
+  // once the bags are back on the return leg, the pickup driver is just history
+  const pickupFaded = ['finished','posted_return','completed'].includes(r.status) || DONE.includes(r.status);
+  const showPickup = pdriver || step >= 1;
+  const showReturn = rdriver || step >= 4;
+  const btn = (label, attrs, primary) => `<button class="btn ${primary?'btn-primary':'btn-outline'}" ${attrs}>${label}</button>`;
+  const assign = (field, label) => btn(label, `data-action="assign-person" data-id="${r.id}" data-field="${field}"`, true);
+  const advance = (to, label) => btn(label, `data-action="advance" data-id="${r.id}" data-to="${to}"`, true);
+  let actions = '';
+  switch(r.status){
+    case 'open': actions = assign('volunteer_id', 'Assign Volunteer'); break;
+    case 'assigned': actions = btn('Copy Post Msg', `data-action="copy-post" data-id="${r.id}" data-leg="pickup"`) + assign('pickup_driver_id', 'Assign Pickup Driver'); break;
+    case 'posted_pickup': actions = pdriver
+        ? btn('Copy Driver Msg', `data-action="copy-driver" data-id="${r.id}" data-leg="pickup"`) + advance('delivered', '&check; Delivered to volunteer')
+        : btn('Copy Post Msg', `data-action="copy-post" data-id="${r.id}" data-leg="pickup"`) + assign('pickup_driver_id', 'Assign Pickup Driver'); break;
+    case 'delivered': actions = advance('finished', '&check; Washing finished'); break;
+    case 'finished': actions = btn('Copy Post Msg', `data-action="copy-post" data-id="${r.id}" data-leg="return"`) + assign('return_driver_id', 'Assign Return Driver'); break;
+    case 'posted_return': actions = rdriver
+        ? btn('Copy Driver Msg', `data-action="copy-driver" data-id="${r.id}" data-leg="return"`) + advance('completed', '&check; Completed')
+        : btn('Copy Post Msg', `data-action="copy-post" data-id="${r.id}" data-leg="return"`) + assign('return_driver_id', 'Assign Return Driver'); break;
+  }
   return `<div class="card status-${r.status}">
-    <div class="row-between">
-      <b>#${r.id}</b>
-      ${statusBadgeInteractive(r)}
+    <div class="req-head">
+      <div><b>#${r.id}</b>${by ? `<span class="by">by ${esc(by)}</span>` : ''}</div>
+      <div class="req-tools">
+        ${statusBadgeInteractive(r)}
+        <button class="icon-only" title="Edit request" data-action="open-modal" data-modal="editRequest" data-id="${r.id}">${ICON_EDIT}</button>
+        <button class="icon-only danger" title="Delete request" data-action="delete-request" data-id="${r.id}">${ICON_TRASH}</button>
+      </div>
     </div>
-    <div style="margin-top:8px;">
-      ${client ? `<div><span class="pill-outline" data-nav="client" data-id="${client.id}">${esc(client.name)}</span> &middot; ${bagsLabel(r.bags)} bag(s)</div>` : ''}
-      <div class="sub" style="margin-top:4px;">${fmtDateTime(r.requested_for)}</div>
+    <div class="req-grid">
+      <span class="k">Client</span><span class="v">${personLink('client', client)} <span class="sub">&middot; ${bagsLabel(r.bags)} bag's</span></span>
+      <span class="k">When</span><span class="v">${fmtDateTime(r.requested_for)}</span>
+      <span class="k">Volunteer</span><span class="v">${personLink('volunteer', vol)}</span>
+      ${showPickup ? `<span class="k ${pickupFaded?'faded':''}">Pickup driver</span><span class="v ${pickupFaded?'faded':''}">${personLink('driver', pdriver)}</span>` : ''}
+      ${showReturn ? `<span class="k">Return driver</span><span class="v">${personLink('driver', rdriver)}</span>` : ''}
     </div>
-    ${vol ? `<div style="margin-top:8px;">Volunteer: <span class="pill-outline" data-nav="volunteer" data-id="${vol.id}">${esc(vol.name)}</span></div>` : ''}
-    ${pdriver ? `<div style="margin-top:6px;">Pickup driver: <span class="pill-outline" data-nav="driver" data-id="${pdriver.id}">${esc(pdriver.name)}</span></div>` : ''}
-    ${rdriver ? `<div style="margin-top:6px;">Return driver: <span class="pill-outline" data-nav="driver" data-id="${rdriver.id}">${esc(rdriver.name)}</span></div>` : ''}
-    <div class="btn-row" style="margin-top:12px;flex-wrap:wrap;">
-      ${['assigned','posted_pickup'].includes(r.status) ? `<button class="btn btn-outline btn-sm" data-action="copy-post" data-id="${r.id}" data-leg="pickup">Copy Post Msg</button>`:''}
-      ${r.status==='posted_pickup' ? `<button class="btn btn-outline btn-sm" data-action="copy-driver" data-id="${r.id}" data-leg="pickup">Copy Driver Msg</button>`:''}
-      ${['finished','posted_return'].includes(r.status) ? `<button class="btn btn-outline btn-sm" data-action="copy-post" data-id="${r.id}" data-leg="return">Copy Post Msg</button>`:''}
-      ${r.status==='posted_return' ? `<button class="btn btn-outline btn-sm" data-action="copy-driver" data-id="${r.id}" data-leg="return">Copy Driver Msg</button>`:''}
-      ${leg ? `<button class="btn btn-outline btn-sm" data-action="assign-driver" data-id="${r.id}" data-leg="${leg}">Assign ${leg==='pickup'?'Pickup':'Return'} Driver</button>`:''}
-      <button class="btn btn-outline btn-sm" data-action="open-modal" data-modal="editRequest" data-id="${r.id}">Edit</button>
-      <button class="btn btn-danger btn-sm" data-action="delete-request" data-id="${r.id}">Delete</button>
-    </div>
+    ${r.notes ? `<div class="private">&#128274; ${esc(r.notes)}</div>` : ''}
+    ${actions ? `<div class="req-actions">${actions}</div>` : ''}
+    ${DONE.includes(r.status) ? `<div style="text-align:center;margin-top:10px;"><a class="sub" style="cursor:pointer;" data-action="toggle-expand" data-id="${r.id}">Show less &#9650;</a></div>` : ''}
   </div>`;
 }
 
@@ -442,42 +532,90 @@ function listFilterBar(){
   </div>`;
 }
 
+const VOL_SORTS = { available:'Available on…', name:'Name (A–Z)', readiness:'Due to wash first', capacity:'Most bags first', frequency:'Washes most often first', newest:'Newest first' };
+function sortVolunteers(list){
+  const rank = {amber:0, gray:1, green:2};
+  const cap = v => ({'1':1,'2':2,'3':3,'4plus':4}[v.bag_capacity]||0);
+  const freq = v => ({weekly:4,three_monthly:3,twice_monthly:2,once_monthly:1}[v.wash_frequency]||0);
+  const byName = (a,b) => a.name.localeCompare(b.name);
+  const day = state.volDay;
+  const cmp = {
+    name: byName,
+    available: (a,b) => (availableOn(b,day) - availableOn(a,day)) || (rank[volunteerReadiness(a)] - rank[volunteerReadiness(b)]) || byName(a,b),
+    readiness: (a,b) => (rank[volunteerReadiness(a)] - rank[volunteerReadiness(b)]) || byName(a,b),
+    capacity: (a,b) => (cap(b) - cap(a)) || byName(a,b),
+    frequency: (a,b) => (freq(b) - freq(a)) || byName(a,b),
+    newest: (a,b) => new Date(b.created_at) - new Date(a.created_at),
+  }[state.volSort] || byName;
+  return list.slice().sort(cmp);
+}
+function volSortControls(){
+  const today = new Date().getDay();
+  return `<div class="sort-row"><label>Sort by</label>
+      <select data-setstate="volSort">${Object.entries(VOL_SORTS).map(([k,l])=>`<option value="${k}" ${state.volSort===k?'selected':''}>${l}</option>`).join('')}</select>
+    </div>
+    ${state.volSort==='available' ? `<div class="chip-row" style="margin-top:8px;">${DAY_SHORT.map((d,i)=>`<div class="chip ${state.volDay===i?'active':''}" data-action="set-vol-day" data-day="${i}">${d}${i===today?' &middot; today':''}</div>`).join('')}</div>` : ''}`;
+}
+function volunteerTags(v){
+  let t = '';
+  if(state.volSort==='available' && availableOn(v, state.volDay)) t += `<span class="tag">Available ${DAY_LONG[state.volDay]}</span>`;
+  if(v.status==='temporary_inactive') t += `<span class="tag gray">Away</span>`;
+  return t;
+}
+function volunteerSub(v){
+  return [v.phone, daysLabel(v) && `Available: ${daysLabel(v)}`, v.bag_capacity && capacityLabel(v.bag_capacity)].filter(Boolean).join(' · ');
+}
+function matchesSearch(p, q){
+  if(!q) return true; q = q.toLowerCase();
+  return [p.name, p.phone, p.address].some(x => (x||'').toLowerCase().includes(q));
+}
+
 function clients(){
-  const list = activeFilter(state.clients);
+  const list = activeFilter(state.clients).filter(c=>matchesSearch(c, state.draft.clientSearch));
   return `
     <div class="btn btn-primary" data-action="open-modal" data-modal="addClient">+ ADD CLIENT</div>
-    <div style="margin-top:12px;"><input placeholder="Search clients…" value="${esc(state.draft.clientSearch||'')}" data-live="draft.clientSearch"></div>
+    <div style="margin-top:12px;"><input placeholder="Search name, phone or address…" value="${esc(state.draft.clientSearch||'')}" data-live="draft.clientSearch"></div>
     <div style="margin-top:12px;">${listFilterBar()}</div>
-    ${renderPeopleList(list.filter(c=>!state.draft.clientSearch || c.name.toLowerCase().includes(state.draft.clientSearch.toLowerCase())), 'client', c=> c.is_mashilach ? 'Mashilach' : (c.phone||''))}
+    ${renderPeopleList(list, 'client', c=> [c.is_mashilach ? 'Mashilach' : '', c.phone].filter(Boolean).join(' · '))}
   `;
 }
 function volunteers(){
-  const list = activeFilter(state.volunteers);
+  const list = sortVolunteers(activeFilter(state.volunteers).filter(v=>matchesSearch(v, state.draft.volSearch)));
   return `
     <div class="btn btn-primary" data-action="open-modal" data-modal="addVolunteer">+ ADD VOLUNTEER</div>
-    <div style="margin-top:12px;"><input placeholder="Search volunteers…" value="${esc(state.draft.volSearch||'')}" data-live="draft.volSearch"></div>
+    <div style="margin-top:12px;"><input placeholder="Search name, phone or address…" value="${esc(state.draft.volSearch||'')}" data-live="draft.volSearch"></div>
+    <div style="margin-top:12px;">${volSortControls()}</div>
     <div style="margin-top:12px;">${listFilterBar()}</div>
-    ${renderPeopleList(list.filter(v=>!state.draft.volSearch || v.name.toLowerCase().includes(state.draft.volSearch.toLowerCase())), 'volunteer', v=> (v.phone||''), v=>`<span class="dot ${volunteerReadiness(v)}"></span>`)}
+    ${renderPeopleList(list, 'volunteer', volunteerSub, v=>`<span class="dot ${volunteerReadiness(v)}" style="margin-right:8px;"></span>`, volunteerTags)}
   `;
 }
 function drivers(){
-  const list = activeFilter(state.drivers);
+  const list = activeFilter(state.drivers).filter(d=>matchesSearch(d, state.draft.drvSearch));
   return `
     <div class="btn btn-primary" data-action="open-modal" data-modal="addDriver">+ ADD DRIVER</div>
-    <div style="margin-top:12px;"><input placeholder="Search drivers…" value="${esc(state.draft.drvSearch||'')}" data-live="draft.drvSearch"></div>
+    <div style="margin-top:12px;"><input placeholder="Search name, phone or address…" value="${esc(state.draft.drvSearch||'')}" data-live="draft.drvSearch"></div>
     <div style="margin-top:12px;">${listFilterBar()}</div>
-    ${renderPeopleList(list.filter(d=>!state.draft.drvSearch || d.name.toLowerCase().includes(state.draft.drvSearch.toLowerCase())), 'driver', d=> (d.phone||''))}
+    ${renderPeopleList(list, 'driver', d=> [d.phone, d.contact_sms && 'SMS', d.contact_whatsapp && 'WhatsApp'].filter(Boolean).join(' · '))}
   `;
 }
-function renderPeopleList(list, kind, subFn, prefixFn){
+function renderPeopleList(list, kind, subFn, prefixFn, tagFn){
   if(list.length===0) return `<div class="empty">No ${kind}s to show.</div>`;
   return list.map(p=>`<div class="list-item" data-nav="${kind}" data-id="${p.id}">
-    <div>${prefixFn?prefixFn(p):''}<span class="name">${esc(p.name)}</span><div class="sub">${esc(subFn(p))}</div></div>
+    <div>${prefixFn?prefixFn(p):''}<span class="name">${esc(p.name)}</span>${tagFn?tagFn(p):''}<div class="sub">${esc(subFn(p))}</div></div>
     <span>&rarr;</span>
   </div>`).join('');
 }
 
 /* ============================= Detail pages ============================= */
+function notesBlock(p){
+  return `${p.note ? `<div class="sub" style="margin-top:8px;"><b>Address note</b> (drivers see this): ${esc(p.note)}</div>` : ''}
+    ${p.private_note ? `<div class="private">&#128274; <b>Private note:</b> ${esc(p.private_note)}</div>` : ''}`;
+}
+function requestList(reqs){
+  if(reqs.length===0) return `<div class="empty">No requests yet.</div>`;
+  const active = reqs.filter(r=>!DONE.includes(r.status)), done = reqs.filter(r=>DONE.includes(r.status));
+  return active.map(requestCard).join('') + done.map(requestCard).join('');
+}
 function clientDetail(){
   const c = byId(state.clients, state.routeId); if(!c) return `<div class="empty">Client not found.</div>`;
   const reqs = state.requests.filter(r=>r.client_id===c.id);
@@ -486,14 +624,14 @@ function clientDetail(){
     <div class="card">
       <div>${phoneLink(c.phone)}</div>
       <div class="sub">${esc(c.address||'No address')}</div>
-      ${c.note ? `<div class="sub" style="margin-top:6px;">${esc(c.note)}</div>` : ''}
-      ${c.is_mashilach ? `<div style="margin-top:8px;"><span class="badge status-assigned">Mashilach</span></div>`:''}
+      ${notesBlock(c)}
+      <div style="margin-top:8px;">${c.is_mashilach ? `<span class="badge status-assigned">Mashilach</span>`:''} <span class="sub">${esc(PERSON_STATUS[c.status]||'')}</span></div>
       <div class="btn-row" style="margin-top:14px;">
         <button class="btn btn-outline" data-action="open-modal" data-modal="editClient" data-id="${c.id}">Edit</button>
       </div>
     </div>
     <h3>Requests (${reqs.length})</h3>
-    ${reqs.length===0 ? `<div class="empty">No requests yet.</div>` : reqs.map(requestCard).join('')}
+    ${requestList(reqs)}
   `;
 }
 function volunteerDetail(){
@@ -506,13 +644,15 @@ function volunteerDetail(){
       <div>${phoneLink(v.phone)}</div>
       <div class="sub">${esc(v.address||'No address')}</div>
       <div class="sub" style="margin-top:6px;">Status: ${esc(PERSON_STATUS[v.status]||v.status)} ${v.status==='temporary_inactive' && v.temp_inactive_until ? `(until ${esc(v.temp_inactive_until)})`:''}</div>
-      <div class="sub">Bag capacity: ${esc(v.bag_capacity==='4plus'?'4 bags plus':(v.bag_capacity||'—'))} &middot; Wash frequency: ${esc(v.wash_frequency==='twice_monthly'?'Twice a month':v.wash_frequency==='once_monthly'?'Once a month':'—')}</div>
+      <div class="sub">Available: ${esc(daysLabel(v) || 'No days set')}</div>
+      <div class="sub">Bag capacity: ${esc(capacityLabel(v.bag_capacity))} &middot; Wash frequency: ${esc(WASH_FREQ[v.wash_frequency]||'—')}</div>
+      ${notesBlock(v)}
       <div class="btn-row" style="margin-top:14px;">
         <button class="btn btn-outline" data-action="open-modal" data-modal="editVolunteer" data-id="${v.id}">Edit</button>
       </div>
     </div>
     <h3>Requests (${reqs.length})</h3>
-    ${reqs.length===0 ? `<div class="empty">No requests yet.</div>` : reqs.map(requestCard).join('')}
+    ${requestList(reqs)}
   `;
 }
 function driverDetail(){
@@ -533,14 +673,15 @@ function driverDetail(){
       </div>
     </div>
     <h3>Requests (${reqs.length})</h3>
-    ${reqs.length===0 ? `<div class="empty">No requests yet.</div>` : reqs.map(requestCard).join('')}
+    ${requestList(reqs)}
   `;
 }
 
 /* ============================= History ============================= */
 function history(){
-  const list = state.requests.filter(r=>['completed','not_covered','cancelled'].includes(r.status));
+  const list = state.requests.filter(r=>DONE.includes(r.status));
   return `<div class="section-title">Request History</div>
+    <div class="sub" style="margin-bottom:10px;">Tap a line to see the full request.</div>
     ${list.length===0 ? `<div class="empty">No finished requests yet.</div>` : list.map(requestCard).join('')}`;
 }
 
@@ -558,7 +699,7 @@ function settings(){
   return `<div class="section-title">Settings</div>
     ${settingsSection('mashilach','Mashilach default address', `
       <div class="field"><label>Preset address</label><input id="set-mashilach-address" value="${esc(s.mashilach_address||'')}"></div>
-      <div class="field"><label>Preset note</label><textarea id="set-mashilach-note" rows="2">${esc(s.mashilach_note||'')}</textarea></div>
+      <div class="field"><label>Preset address note</label><textarea id="set-mashilach-note" rows="2">${esc(s.mashilach_note||'')}</textarea></div>
       <div class="btn btn-primary btn-sm" style="margin-top:10px;" data-action="save-mashilach-settings">Save</div>
     `)}
     ${settingsSection('postmsg','Post Message wording', `
@@ -570,18 +711,23 @@ function settings(){
     ${settingsSection('drivermsg','Driver Message templates', `
       <div class="field"><label>Pickup leg template</label><textarea id="set-dm-pickup" rows="4">${esc(s.driver_message_pickup_template||'')}</textarea></div>
       <div class="field"><label>Return leg template</label><textarea id="set-dm-return" rows="4">${esc(s.driver_message_return_template||'')}</textarea></div>
-      <div class="sub">Placeholders: {request_id} {driver_name} {client_name} {client_address} {client_phone} {client_note} {volunteer_name} {volunteer_address} {volunteer_phone} {volunteer_note} {bags} {requested_for} {notes}. A line whose placeholders are all empty is left out. {bags} is always empty on the return leg.</div>
+      <div class="sub">Placeholders: {request_id} {driver_name} {client_name} {client_address} {client_phone} {client_note} {volunteer_name} {volunteer_address} {volunteer_phone} {volunteer_note} {bags} {requested_for}. {client_note} and {volunteer_note} are the <b>address notes</b>; private notes are never copied. To remove something (like the "When" line), just delete that line and Save. A line whose placeholders are all empty is left out, and {bags} is always empty on the return leg.</div>
       <div class="btn btn-primary btn-sm" style="margin-top:10px;" data-action="save-drivermsg-settings">Save</div>
     `)}
     ${settingsSection('users','Dispatcher access', `
-      <h4>Invite a new dispatcher</h4>
+      <h4>Invite someone</h4>
       <div class="sub">Add their email here, then tell them to open the app and tap "Sign up" using that same email.</div>
       <div class="field" style="margin-top:8px;"><input id="new-invite-email" type="email" placeholder="email@example.com"></div>
+      <label>Invite as</label>
+      <div class="chip-row" style="margin-bottom:10px;">
+        <div class="chip ${(state.inviteRole||'dispatcher')==='dispatcher'?'active':''}" data-action="set-invite-role" data-role="dispatcher">Dispatcher</div>
+        <div class="chip ${state.inviteRole==='editor'?'active':''}" data-action="set-invite-role" data-role="editor">Editor (full access + Settings)</div>
+      </div>
       <div class="btn btn-primary btn-sm" data-action="send-invite">Add invite</div>
-      ${pendingInvites().length ? `<div style="margin-top:12px;"><div class="sub">Waiting to sign up:</div>${pendingInvites().map(i=>`<div class="list-item"><span>${esc(i.email)}</span><button class="btn btn-danger btn-sm" data-action="remove-invite" data-email="${esc(i.email)}">Remove</button></div>`).join('')}</div>` : ''}
+      ${pendingInvites().length ? `<div style="margin-top:12px;"><div class="sub">Waiting to sign up:</div>${pendingInvites().map(i=>`<div class="list-item"><span>${esc(i.email)} <span class="tag gray">${i.role==='editor'?'Editor':'Dispatcher'}</span></span><button class="btn btn-danger btn-sm" data-action="remove-invite" data-email="${esc(i.email)}">Remove</button></div>`).join('')}</div>` : ''}
       <h4 style="margin-top:18px;">Current users</h4>
       ${state.profiles.map(p=>`<div class="list-item">
-        <div><span class="name">${esc(p.email)}</span><div class="sub">${esc(p.role)}</div></div>
+        <div><span class="name">${esc(p.name || p.email)}</span><div class="sub">${p.name ? esc(p.email)+' · ' : ''}${p.role==='editor'?'Editor':'Dispatcher'}</div></div>
         <div class="btn-row" style="width:auto;gap:6px;">
           ${p.id!==state.profile.id ? `<button class="btn btn-outline btn-sm" data-action="toggle-role" data-id="${p.id}" data-role="${p.role==='editor'?'dispatcher':'editor'}">Make ${p.role==='editor'?'Dispatcher':'Editor'}</button>
           <button class="btn btn-danger btn-sm" data-action="remove-user" data-id="${p.id}">Remove</button>` : `<span class="sub">You</span>`}
@@ -602,7 +748,8 @@ function modalHtml(){
     addVolunteer: ()=>personFormModal('volunteer', null), editVolunteer: ()=>personFormModal('volunteer', m.id),
     addDriver: ()=>personFormModal('driver', null), editDriver: ()=>personFormModal('driver', m.id),
     statusMenu: statusMenuModal,
-    assignDriver: assignDriverModal,
+    assignPerson: assignPersonModal,
+    myName: myNameModal,
   };
   const fn = map[m.type];
   return `<div class="modal-overlay" data-action="overlay-click"><div class="modal">
@@ -611,39 +758,45 @@ function modalHtml(){
   </div></div>`;
 }
 
+function notesFields(){
+  return `<div class="field"><label>Address note <span class="hint">— drivers see this in the copied message</span></label><textarea data-bind="note" rows="2" placeholder="e.g. Ring bell twice, 3rd floor">${esc(state.draft.note||'')}</textarea></div>
+      <div class="field"><label>Private note <span class="hint">— only dispatchers see this</span></label><textarea data-bind="private_note" rows="2">${esc(state.draft.private_note||'')}</textarea></div>`;
+}
 function personFormModal(kind, id){
   const existing = id ? byId(state[kind+'s'], id) : null;
   const d = state.draft;
   if(d._formKind !== kind || d._formId !== (id||'new')){
-    state.draft = { _formKind:kind, _formId:id||'new', ...(existing||{}) };
+    // new people start out Active; the status can still be changed below
+    state.draft = { _formKind:kind, _formId:id||'new', ...(existing || {status:'active', available_days:[], ...(state.pendingPrefill||{})}) };
+    state.pendingPrefill = null;
   }
   const titleKind = kind.charAt(0).toUpperCase()+kind.slice(1);
   let fields = '';
   if(kind==='client'){
     fields = `
       <div class="field"><label>Name</label><input data-bind="name" value="${esc(state.draft.name||'')}"></div>
-      <div class="field"><label>Phone</label><input data-bind="phone" value="${esc(state.draft.phone||'')}"></div>
+      <div class="field"><label>Phone</label><input data-bind="phone" type="tel" value="${esc(state.draft.phone||'')}"></div>
       <div class="toggle"><span>Mashilach</span><div class="switch ${state.draft.is_mashilach?'on':''}" data-action="toggle-mashilach"><div class="knob"></div></div></div>
       <div class="field"><label>Address</label><input data-bind="address" value="${esc(state.draft.address||'')}"></div>
-      <div class="field"><label>Note</label><textarea data-bind="note" rows="2">${esc(state.draft.note||'')}</textarea></div>
+      ${notesFields()}
       ${statusToggleField(state.draft.status)}
     `;
   } else if(kind==='volunteer'){
+    const days = state.draft.available_days || [];
     fields = `
       <div class="field"><label>Name</label><input data-bind="name" value="${esc(state.draft.name||'')}"></div>
-      <div class="field"><label>Phone</label><input data-bind="phone" value="${esc(state.draft.phone||'')}"></div>
+      <div class="field"><label>Phone</label><input data-bind="phone" type="tel" value="${esc(state.draft.phone||'')}"></div>
       <div class="field"><label>Address</label><input data-bind="address" value="${esc(state.draft.address||'')}"></div>
-      <div class="field"><label>Note</label><textarea data-bind="note" rows="2">${esc(state.draft.note||'')}</textarea></div>
+      ${notesFields()}
+      <label>Available days</label>
+      <div class="chip-row">${DAY_SHORT.map((dn,i)=>`<div class="chip ${days.includes(i)?'active':''}" data-action="toggle-day" data-day="${i}">${dn}</div>`).join('')}</div>
       <label>Bag capacity</label>
-      <div class="chip-row">${['1','2','3','4plus'].map(b=>`<div class="chip ${state.draft.bag_capacity===b?'active':''}" data-action="set-draft" data-field="bag_capacity" data-value="${b}">${b==='4plus'?'4 bags plus':b+' bag(s)'}</div>`).join('')}</div>
+      <div class="chip-row">${['1','2','3','4plus'].map(b=>`<div class="chip ${state.draft.bag_capacity===b?'active':''}" data-action="set-draft" data-field="bag_capacity" data-value="${b}">${capacityLabel(b)}</div>`).join('')}</div>
       <label>Wash frequency</label>
-      <div class="chip-row">
-        <div class="chip ${state.draft.wash_frequency==='once_monthly'?'active':''}" data-action="set-draft" data-field="wash_frequency" data-value="once_monthly">Once a month</div>
-        <div class="chip ${state.draft.wash_frequency==='twice_monthly'?'active':''}" data-action="set-draft" data-field="wash_frequency" data-value="twice_monthly">Twice a month</div>
-      </div>
+      <div class="chip-row">${Object.entries(WASH_FREQ).map(([k,l])=>`<div class="chip ${state.draft.wash_frequency===k?'active':''}" data-action="set-draft" data-field="wash_frequency" data-value="${k}">${l}</div>`).join('')}</div>
       <label>Status</label>
       <div class="chip-row">
-        ${['active','inactive','temporary_inactive'].map(s=>`<div class="chip ${state.draft.status===s?'active':''}" data-action="set-draft" data-field="status" data-value="${s}">${s==='temporary_inactive'?'Temp. Inactive':s.charAt(0).toUpperCase()+s.slice(1)}</div>`).join('')}
+        ${['active','inactive','temporary_inactive'].map(st=>`<div class="chip ${state.draft.status===st?'active':''}" data-action="set-draft" data-field="status" data-value="${st}">${st==='temporary_inactive'?'Temp. Inactive':PERSON_STATUS[st]}</div>`).join('')}
       </div>
       ${state.draft.status==='temporary_inactive' ? `
       <div class="two-col">
@@ -654,8 +807,8 @@ function personFormModal(kind, id){
   } else if(kind==='driver'){
     fields = `
       <div class="field"><label>Name</label><input data-bind="name" value="${esc(state.draft.name||'')}"></div>
-      <div class="field"><label>Phone</label><input data-bind="phone" value="${esc(state.draft.phone||'')}"></div>
-      <div class="field"><label>Email</label><input data-bind="email" value="${esc(state.draft.email||'')}"></div>
+      <div class="field"><label>Phone</label><input data-bind="phone" type="tel" value="${esc(state.draft.phone||'')}"></div>
+      <div class="field"><label>Email</label><input data-bind="email" type="email" value="${esc(state.draft.email||'')}"></div>
       <div class="field"><label>Address</label><input data-bind="address" value="${esc(state.draft.address||'')}"></div>
       <label>Contact method</label>
       <div class="chip-row">
@@ -665,9 +818,10 @@ function personFormModal(kind, id){
       ${statusToggleField(state.draft.status)}
     `;
   }
+  const back = state.modalStack.length ? 'Back' : 'Cancel';
   return `<h2>${existing?'Edit':'Add'} ${titleKind}</h2>${fields}
     <div class="btn-row" style="margin-top:18px;">
-      <button class="btn btn-outline" data-action="close-modal">Cancel</button>
+      <button class="btn btn-outline" data-action="close-modal">${back}</button>
       <button class="btn btn-primary" data-action="save-person" data-kind="${kind}" data-id="${id||''}">Save</button>
     </div>`;
 }
@@ -678,25 +832,50 @@ function statusToggleField(status){
   </div>`;
 }
 
+/* ---------- Search-and-pick lists (clients, volunteers, drivers) ---------- */
+const KIND_FOR_FIELD = { client_id:'client', volunteer_id:'volunteer', pickup_driver_id:'driver', return_driver_id:'driver' };
+function pickerResults(field){
+  const kind = KIND_FOR_FIELD[field];
+  const q = state.pickerSearch[field] || '';
+  let list = state[kind+'s'].filter(p => p.status !== 'inactive' && matchesSearch(p, q));
+  list = kind==='volunteer' ? sortVolunteers(list) : list.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const sub = p => kind==='volunteer' ? volunteerSub(p) : kind==='driver'
+    ? [p.phone, p.contact_sms && 'SMS', p.contact_whatsapp && 'WhatsApp'].filter(Boolean).join(' · ')
+    : [p.address, p.phone].filter(Boolean).join(' · ');
+  return `<div class="picker-list">
+    ${list.slice(0, 30).map(p=>`<div class="picker-item" data-action="pick" data-field="${field}" data-value="${p.id}">
+      <div>${kind==='volunteer' ? `<span class="dot ${volunteerReadiness(p)}" style="margin-right:6px;"></span>` : ''}<b>${esc(p.name)}</b>${kind==='volunteer' ? volunteerTags(p) : ''}<div class="sub">${esc(sub(p))}</div></div>
+      <span class="sub">Select</span>
+    </div>`).join('')}
+    ${list.length===0 ? `<div class="picker-item sub">No ${kind}s match "${esc(q)}"</div>` : ''}
+    <div class="picker-item picker-add" data-action="push-person" data-kind="${kind}" data-field="${field}">+ Add new ${kind}${q ? ` "${esc(q)}"` : ''}</div>
+  </div>`;
+}
+function pickerSearchBox(field){
+  const kind = KIND_FOR_FIELD[field];
+  return `<input placeholder="Search ${kind}s by name, phone or address…" value="${esc(state.pickerSearch[field]||'')}" data-live="pickerSearch.${field}">`;
+}
+// In a form: shows the chosen person with "Change", or a search box with results
+function inlinePicker(field){
+  const kind = KIND_FOR_FIELD[field];
+  const sel = byId(state[kind+'s'], state.draft[field]);
+  if(sel) return `<div class="picked"><div><b>${esc(sel.name)}</b><div class="sub">${esc(sel.address||sel.phone||'')}</div></div><a data-action="unpick" data-field="${field}">Change</a></div>`;
+  return pickerSearchBox(field) + pickerResults(field);
+}
+
 function newRequestModal(){
   const d = state.draft;
   if(d._formKind !== 'newRequest'){ state.draft = {_formKind:'newRequest', requested_for: toLocalInputValue(new Date()), bags:'1'}; }
   return `<h2>Create New Request</h2>
-    <label>Client</label>
-    <select data-bind="client_id">
-      <option value="">Select client…</option>
-      ${activeFilter(state.clients).map(c=>`<option value="${c.id}" ${state.draft.client_id==c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
-    </select>
-    <label>Bags</label>
+    <label>1. Client</label>
+    ${inlinePicker('client_id')}
+    <label>2. Bags</label>
     <div class="chip-row">${bagChips()}</div>
-    <label>Requested for</label>
+    <label>3. Requested for</label>
     <input type="datetime-local" data-bind="requested_for" value="${esc(state.draft.requested_for||'')}">
-    <label>Volunteer (optional)</label>
-    <select data-bind="volunteer_id">
-      <option value="">Unassigned</option>
-      ${activeFilter(state.volunteers).map(v=>`<option value="${v.id}" ${state.draft.volunteer_id==v.id?'selected':''}>${esc(v.name)}</option>`).join('')}
-    </select>
-    <label>Notes</label>
+    <label>4. Volunteer <span class="hint">— optional, you can assign later</span></label>
+    ${state.draft.volunteer_id || state.draft._showVol ? inlinePicker('volunteer_id') : `<div class="btn btn-outline btn-sm" data-action="set-draft" data-field="_showVol" data-value="1">Choose a volunteer now</div>`}
+    <label>5. Dispatcher note <span class="hint">— only dispatchers see this</span></label>
     <textarea data-bind="notes" rows="2">${esc(state.draft.notes||'')}</textarea>
     <div class="btn-row" style="margin-top:18px;">
       <button class="btn btn-outline" data-action="close-modal">Cancel</button>
@@ -710,20 +889,21 @@ function editRequestModal(){
   if(d._formKind !== 'editRequest' || d._formId !== r.id){
     state.draft = {_formKind:'editRequest', _formId:r.id, ...r, requested_for: r.requested_for ? toLocalInputValue(new Date(r.requested_for)) : ''};
   }
+  const optional = field => state.draft[field] ? inlinePicker(field) + `<a class="sub" style="cursor:pointer;display:inline-block;margin-top:4px;" data-action="clear-field" data-field="${field}">Remove</a>` : inlinePicker(field);
   return `<h2>Edit Request #${r.id}</h2>
     <label>Client</label>
-    <select data-bind="client_id">${state.clients.map(c=>`<option value="${c.id}" ${state.draft.client_id==c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
+    ${inlinePicker('client_id')}
     <label>Bags</label>
     <div class="chip-row">${bagChips()}</div>
     <label>Requested for</label>
     <input type="datetime-local" data-bind="requested_for" value="${esc(state.draft.requested_for||'')}">
     <label>Volunteer</label>
-    <select data-bind="volunteer_id"><option value="">Unassigned</option>${state.volunteers.map(v=>`<option value="${v.id}" ${state.draft.volunteer_id==v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select>
+    ${optional('volunteer_id')}
     <label>Pickup driver</label>
-    <select data-bind="pickup_driver_id"><option value="">Unassigned</option>${state.drivers.map(dr=>`<option value="${dr.id}" ${state.draft.pickup_driver_id==dr.id?'selected':''}>${esc(dr.name)}</option>`).join('')}</select>
+    ${optional('pickup_driver_id')}
     <label>Return driver</label>
-    <select data-bind="return_driver_id"><option value="">Unassigned</option>${state.drivers.map(dr=>`<option value="${dr.id}" ${state.draft.return_driver_id==dr.id?'selected':''}>${esc(dr.name)}</option>`).join('')}</select>
-    <label>Notes</label>
+    ${optional('return_driver_id')}
+    <label>Dispatcher note <span class="hint">— only dispatchers see this</span></label>
     <textarea data-bind="notes" rows="2">${esc(state.draft.notes||'')}</textarea>
     <div class="btn-row" style="margin-top:18px;">
       <button class="btn btn-outline" data-action="close-modal">Cancel</button>
@@ -739,13 +919,27 @@ function statusMenuModal(){
       </div>`).join('')}`;
 }
 
-function assignDriverModal(){
+// Assign a volunteer / pickup driver / return driver straight from a request card
+function assignPersonModal(){
   const r = byId(state.requests, state.modal.id); if(!r) return '';
-  const leg = state.modal.leg;
-  return `<h2>Assign ${leg==='pickup'?'Pickup':'Return'} Driver — #${r.id}</h2>
-    ${activeFilter(state.drivers).map(dr=>`<div class="list-item" data-action="pick-driver" data-id="${r.id}" data-leg="${leg}" data-driver="${dr.id}">
-      <span>${esc(dr.name)}</span><span class="sub">${esc(dr.phone||'')}</span>
-    </div>`).join('')}`;
+  const field = state.modal.field;
+  const title = {volunteer_id:'Assign Volunteer', pickup_driver_id:'Assign Pickup Driver', return_driver_id:'Assign Return Driver'}[field];
+  const client = byId(state.clients, r.client_id);
+  return `<h2>${title} &mdash; #${r.id}</h2>
+    <div class="sub" style="margin-bottom:10px;">${esc(client?.name||'')} &middot; ${fmtDateTime(r.requested_for)}</div>
+    ${pickerSearchBox(field)}
+    ${field==='volunteer_id' ? `<div style="margin-top:10px;">${volSortControls()}</div>` : ''}
+    ${pickerResults(field)}`;
+}
+
+function myNameModal(){
+  return `<h2>Your name</h2>
+    <div class="sub">Shown on every request you create, so everyone knows who posted it.</div>
+    <div class="field" style="margin-top:10px;"><input id="my-name" value="${esc(state.profile?.name||'')}" placeholder="e.g. Yidel"></div>
+    <div class="btn-row" style="margin-top:14px;">
+      <button class="btn btn-outline" data-action="close-modal">Cancel</button>
+      <button class="btn btn-primary" data-action="save-my-name">Save</button>
+    </div>`;
 }
 
 /* ============================= Event delegation ============================= */
@@ -754,7 +948,7 @@ function initEvents(){
   if(initialized) return; initialized = true;
   document.addEventListener('click', async (e)=>{
     if(e.target.closest('.modal-overlay') && !e.target.closest('.modal') && e.target.closest('[data-action="overlay-click"]')){
-      state.modal = null; state.draft = {}; render(); return;
+      closeModal(); return;
     }
     const navEl = e.target.closest('[data-nav]');
     const actionEl = e.target.closest('[data-action]');
@@ -762,7 +956,7 @@ function initEvents(){
     // A nav element wins when it is nested inside the action element (e.g. menu items inside the menu overlay)
     if(navEl && (!actionEl || actionEl.contains(navEl))){
       const r = navEl.getAttribute('data-nav');
-      state.route = r; state.routeId = navEl.getAttribute('data-id')||null; state.menuOpen=false; state.modal=null; state.draft={};
+      state.route = r; state.routeId = navEl.getAttribute('data-id')||null; state.menuOpen=false; state.modal=null; state.draft={}; state.modalStack=[];
       render(); window.scrollTo(0,0); return;
     }
     if(!actionEl) return;
@@ -784,14 +978,66 @@ function initEvents(){
         const email = document.getElementById('auth-email').value.trim();
         const password = document.getElementById('auth-password').value;
         if(!email || password.length < 6){ state.authError = 'Enter your email and a password of at least 6 characters.'; render(); break; }
-        const {data, error} = await sb.auth.signUp({email,password});
+        const name = (document.getElementById('auth-name')?.value||'').trim();
+        if(!name){ state.authError = 'Please enter your name.'; render(); break; }
+        const {data, error} = await sb.auth.signUp({email, password, options:{data:{name}}});
         if(error){ state.authError = friendlyAuthError(error); render(); }
         else if(!data.session){ state.authMode='login'; state.authError=''; state.authInfo = 'Account created. Check your email for a confirmation link, then come back and log in.'; render(); }
         else { state.authError=''; await onAuthed(); }
         break;
       }
-      case 'open-modal': state.modal = {type: actionEl.getAttribute('data-modal'), id: actionEl.getAttribute('data-id')}; state.draft={}; render(); break;
-      case 'close-modal': state.modal = null; state.draft = {}; render(); break;
+      case 'open-modal':
+        state.modal = {type: actionEl.getAttribute('data-modal'), id: actionEl.getAttribute('data-id')};
+        state.draft = {}; state.modalStack = []; state.pickerSearch = {}; state.menuOpen = false;
+        if(state.modal.type==='newRequest'){ state.volSort = 'available'; state.volDay = new Date().getDay(); }
+        render(); break;
+      case 'close-modal': closeModal(); break;
+      case 'set-vol-day': state.volDay = Number(actionEl.getAttribute('data-day')); render(); break;
+      case 'toggle-day': {
+        const day = Number(actionEl.getAttribute('data-day')); const days = new Set(state.draft.available_days||[]);
+        days.has(day) ? days.delete(day) : days.add(day);
+        state.draft.available_days = [...days].sort(); render(); break;
+      }
+      case 'push-person': {
+        // open "Add client/volunteer/driver" on top of the current window; saving comes back here with it selected
+        const kind = actionEl.getAttribute('data-kind'); const field = actionEl.getAttribute('data-field');
+        const typed = (state.pickerSearch[field]||'').trim();
+        state.modalStack.push({modal: state.modal, draft: state.draft, field});
+        state.modal = {type: 'add' + kind.charAt(0).toUpperCase() + kind.slice(1)};
+        state.draft = {}; state.pendingPrefill = typed && !/^[\d\s()+-]+$/.test(typed) ? {name: typed} : null;
+        render(); break;
+      }
+      case 'pick': {
+        const field = actionEl.getAttribute('data-field'); const value = actionEl.getAttribute('data-value');
+        state.pickerSearch[field] = '';
+        if(state.modal?.type==='assignPerson'){ await assignToRequest(state.modal.id, field, value); }
+        else { state.draft[field] = value; render(); }
+        break;
+      }
+      case 'unpick': { const f = actionEl.getAttribute('data-field'); state.draft[f] = null; state.pickerSearch[f] = ''; if(f==='volunteer_id') state.draft._showVol = '1'; render(); break; }
+      case 'clear-field': state.draft[actionEl.getAttribute('data-field')] = null; render(); break;
+      case 'assign-person': {
+        const r = byId(state.requests, Number(actionEl.getAttribute('data-id')));
+        state.modal = {type:'assignPerson', id:r.id, field: actionEl.getAttribute('data-field')};
+        state.modalStack = []; state.pickerSearch = {}; state.draft = {};
+        state.volSort = 'available'; state.volDay = r.requested_for ? new Date(r.requested_for).getDay() : new Date().getDay();
+        render(); break;
+      }
+      case 'advance': {
+        const id = Number(actionEl.getAttribute('data-id')); const to = actionEl.getAttribute('data-to');
+        const saved = await updateRequest(id, {status: to});
+        if(saved){ if(state.route==='dispatch') state.dispatchTab = to; showToast(`#${id} moved to ${TAB_LABELS[to]||STATUS_LABELS[to]}`); }
+        break;
+      }
+      case 'toggle-expand': { const id = actionEl.getAttribute('data-id'); state.expanded[id] = !state.expanded[id]; render(); break; }
+      case 'save-my-name': {
+        const name = document.getElementById('my-name').value.trim();
+        if(!name){ showToast('Type your name'); break; }
+        const {error} = await sb.rpc('set_my_name', {new_name: name});
+        if(error){ showToast(error.message); break; }
+        state.profile.name = name; const me = byId(state.profiles, state.profile.id); if(me) me.name = name;
+        state.modal = null; showToast('Saved'); break;
+      }
       case 'dispatch-tab': state.dispatchTab = actionEl.getAttribute('data-tab'); render(); break;
       case 'list-filter': state.listFilter = actionEl.getAttribute('data-f'); render(); break;
       case 'toggle-settings': { const k=actionEl.getAttribute('data-key'); state.settingsExpanded[k]=!state.settingsExpanded[k]; render(); break; }
@@ -811,12 +1057,6 @@ function initEvents(){
         const id = Number(actionEl.getAttribute('data-id')); const status = actionEl.getAttribute('data-status');
         await updateRequest(id, {status}); state.modal=null; state.dispatchTab = status; render(); break;
       }
-      case 'assign-driver': state.modal = {type:'assignDriver', id:Number(actionEl.getAttribute('data-id')), leg: actionEl.getAttribute('data-leg')}; render(); break;
-      case 'pick-driver': {
-        const id = Number(actionEl.getAttribute('data-id')); const leg = actionEl.getAttribute('data-leg'); const driver = actionEl.getAttribute('data-driver');
-        const field = leg==='pickup' ? 'pickup_driver_id' : 'return_driver_id';
-        await updateRequest(id, {[field]: driver}); state.modal=null; render(); break;
-      }
       case 'copy-post': {
         const r = byId(state.requests, Number(actionEl.getAttribute('data-id'))); const leg = actionEl.getAttribute('data-leg');
         copyToClipboard(shortLegMessage(r, leg)); break;
@@ -830,10 +1070,12 @@ function initEvents(){
       case 'save-drivermsg-settings': await updateSettings({driver_message_pickup_template: document.getElementById('set-dm-pickup').value, driver_message_return_template: document.getElementById('set-dm-return').value}); showToast('Saved'); render(); break;
       case 'send-invite': {
         const email = document.getElementById('new-invite-email').value.trim();
+        const role = state.inviteRole || 'dispatcher';
         if(!/^\S+@\S+\.\S+$/.test(email)){ showToast('Enter a valid email'); break; }
-        if(await addInvite(email)) showToast('Invited — they can now sign up with ' + email);
+        if(await addInvite(email, role)) showToast(`Invited as ${role==='editor'?'Editor':'Dispatcher'} — they can now sign up with ${email}`);
         break;
       }
+      case 'set-invite-role': state.inviteRole = actionEl.getAttribute('data-role'); render(); break;
       case 'remove-invite': await removeInvite(actionEl.getAttribute('data-email')); render(); break;
       case 'toggle-role': await updateProfileRole(actionEl.getAttribute('data-id'), actionEl.getAttribute('data-role')); render(); break;
       case 'remove-user': if(confirm('Remove this user\'s access?')){ await removeProfile(actionEl.getAttribute('data-id')); render(); } break;
@@ -858,9 +1100,41 @@ function initEvents(){
   });
   document.addEventListener('change', (e)=>{
     if(e.target.closest('[data-live]')) return;
+    const setEl = e.target.closest('[data-setstate]');
+    if(setEl){ state[setEl.getAttribute('data-setstate')] = setEl.value; render(); return; }
     const bindEl = e.target.closest('[data-bind]');
-    if(bindEl){ state.draft[bindEl.getAttribute('data-bind')] = bindEl.value; }
+    if(bindEl){
+      state.draft[bindEl.getAttribute('data-bind')] = bindEl.value;
+      // volunteers available on the requested day float to the top of the picker
+      if(bindEl.getAttribute('data-bind')==='requested_for' && bindEl.value){ state.volDay = new Date(bindEl.value).getDay(); render(); }
+    }
   });
+}
+
+function closeModal(){
+  const prev = state.modalStack.pop();
+  if(prev){ state.modal = prev.modal; state.draft = prev.draft; }
+  else { state.modal = null; state.draft = {}; state.pickerSearch = {}; }
+  render();
+}
+
+// Filling in the person a step needs moves the request on by itself
+function autoStatus(r){
+  if(r.status==='open' && r.volunteer_id) return r.pickup_driver_id ? 'posted_pickup' : 'assigned';
+  if(r.status==='assigned' && r.pickup_driver_id) return 'posted_pickup';
+  if(r.status==='finished' && r.return_driver_id) return 'posted_return';
+  return r.status;
+}
+async function assignToRequest(id, field, value){
+  const r = byId(state.requests, id);
+  const patch = {[field]: value};
+  const next = autoStatus({...r, ...patch});
+  if(next !== r.status) patch.status = next;
+  const saved = await updateRequest(id, patch);
+  if(!saved) return;
+  state.modal = null; state.draft = {}; state.modalStack = []; state.pickerSearch = {};
+  if(state.route==='dispatch') state.dispatchTab = saved.status;
+  showToast(next !== r.status ? `#${id} moved to ${TAB_LABELS[next]||STATUS_LABELS[next]}` : 'Saved');
 }
 
 async function saveNewRequest(){
@@ -877,19 +1151,23 @@ async function saveNewRequest(){
 }
 async function saveEditRequest(id){
   const d = state.draft;
-  const saved = await updateRequest(id, {
+  const r = byId(state.requests, id);
+  const patch = {
     client_id: d.client_id||null, bags: Number(d.bags)||1, volunteer_id: d.volunteer_id||null,
     pickup_driver_id: d.pickup_driver_id||null, return_driver_id: d.return_driver_id||null,
     requested_for: d.requested_for ? new Date(d.requested_for).toISOString() : null,
     notes: d.notes||''
-  });
+  };
+  patch.status = autoStatus({...r, ...patch});
+  const saved = await updateRequest(id, patch);
   if(!saved) return;
+  if(state.route==='dispatch') state.dispatchTab = saved.status;
   state.modal = null; state.draft = {}; render();
 }
 async function savePerson(kind, id){
   const COLS = {
-    client: ['name','phone','address','note','is_mashilach','status'],
-    volunteer: ['name','phone','address','note','status','temp_inactive_from','temp_inactive_until','bag_capacity','wash_frequency'],
+    client: ['name','phone','address','note','private_note','is_mashilach','status'],
+    volunteer: ['name','phone','address','note','private_note','status','temp_inactive_from','temp_inactive_until','bag_capacity','wash_frequency','available_days'],
     driver: ['name','phone','email','address','contact_sms','contact_whatsapp','status'],
   }[kind];
   const d = {};
@@ -902,6 +1180,13 @@ async function savePerson(kind, id){
   if(kind==='volunteer'){ saved = id ? await updateVolunteer(id, d) : await createVolunteer(d); }
   if(kind==='driver'){ saved = id ? await updateDriver(id, d) : await createDriver(d); }
   if(!saved) return; // keep the form open so nothing typed is lost
+  const prev = state.modalStack.pop();
+  if(prev){
+    // came here from a request: go back to it with the new person already chosen
+    if(prev.modal.type==='assignPerson'){ await assignToRequest(prev.modal.id, prev.field, saved.id); return; }
+    state.modal = prev.modal; state.draft = {...prev.draft, [prev.field]: saved.id};
+    state.pickerSearch[prev.field] = ''; render(); return;
+  }
   state.modal = null; state.draft = {}; render();
 }
 

@@ -196,3 +196,47 @@ create policy requests_all_known on requests for all to authenticated using (is_
 
 create policy settings_select_known on app_settings for select to authenticated using (is_known_user());
 create policy settings_update_editor on app_settings for update to authenticated using (is_editor()) with check (is_editor());
+
+-- =========================================================
+-- 2026-10-13: availability, private notes, dispatcher names,
+-- more wash frequencies
+-- =========================================================
+alter table volunteers add column if not exists available_days smallint[] not null default '{}'; -- 0 = Sunday … 6 = Saturday
+alter table volunteers add column if not exists private_note text; -- dispatchers only; `note` is the address note drivers see
+alter table clients add column if not exists private_note text;
+alter table profiles add column if not exists name text;
+alter table requests add column if not exists created_by uuid default auth.uid() references profiles(id);
+
+alter table volunteers drop constraint volunteers_wash_frequency_check;
+alter table volunteers add constraint volunteers_wash_frequency_check
+  check (wash_frequency in ('weekly','three_monthly','twice_monthly','once_monthly'));
+
+-- Lets a signed-in user set their own display name (and nothing else about their profile)
+create or replace function set_my_name(new_name text)
+returns void language sql security definer set search_path = public as $$
+  update profiles set name = nullif(trim(new_name), '') where id = auth.uid();
+$$;
+revoke execute on function set_my_name(text) from public, anon;
+grant execute on function set_my_name(text) to authenticated;
+
+-- handle_new_user now also stores the name typed on the sign-up screen
+create or replace function handle_new_user()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  invited_role text;
+  display_name text := nullif(trim(new.raw_user_meta_data->>'name'), '');
+begin
+  if not exists (select 1 from profiles) then
+    insert into profiles (id, email, role, name) values (new.id, new.email, 'editor', display_name);
+    return new;
+  end if;
+
+  select role into invited_role from invites where lower(email) = lower(new.email);
+  if invited_role is null then
+    raise exception 'NOT_INVITED: This email has not been invited.';
+  end if;
+
+  insert into profiles (id, email, role, name) values (new.id, new.email, invited_role, display_name);
+  return new;
+end;
+$$;
