@@ -136,6 +136,23 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .sort-row select{padding:8px;}
 .private{background:#fff8e1;border-radius:8px;padding:8px 10px;font-size:13px;margin-top:8px;}
 .hint{font-size:12px;color:var(--muted);margin-top:2px;}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;}
+.stat-grid .card{margin-bottom:0;cursor:pointer;}
+.stat .big{font-size:34px;font-weight:800;line-height:1;color:var(--blue);}
+.stat .label{font-weight:700;margin-top:6px;}
+.stat-lines{margin-top:8px;font-size:13px;color:var(--muted);}
+.stat-lines div{display:flex;justify-content:space-between;padding:2px 0;border-top:1px dashed var(--border);}
+.stat-lines b{color:var(--text);}
+.top-cols{margin-top:6px;gap:18px;}
+.top-head{font-weight:700;margin:8px 0 4px;}
+.top-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);}
+.top-row .name-link{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.top-row .rank{width:20px;height:20px;border-radius:50%;background:var(--blue-light);color:var(--blue);font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
+@media(max-width:480px){.top-cols{grid-template-columns:1fr;}}
+.avatar{cursor:pointer;border:none;color:#fff;}
+.person-sub{font-size:12px;color:var(--muted);}
+.person-sub a{color:var(--blue);}
+.clear-all{margin-left:auto;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;}
 </style>
 </head>
 <body>
@@ -171,7 +188,8 @@ const state = {
   modalStack: [],         // modals underneath the current one (e.g. New Request under Add Client)
   pickerSearch: {},       // search text per picker field
   expanded: {},           // finished requests opened from their one-line view
-  volSort: 'available', volDay: new Date().getDay(),
+  volSort: 'name', volDays: defaultVolDays(),
+  navStack: [],           // where to go back to from a profile page
 };
 
 const STATUS_FLOW = ['open','assigned','posted_pickup','delivered','finished','posted_return','completed'];
@@ -184,7 +202,23 @@ const ALL_STATUSES = [...STATUS_FLOW, 'not_covered', 'cancelled'];
 // Both legs share the status name "Posted"; tabs and menus say which leg
 const TAB_LABELS = { posted_pickup:'Posted · Pickup', posted_return:'Posted · Return' };
 
-function render(){ const r = routes[state.route] || routes.dashboard; document.getElementById('app').innerHTML = layout(r()); afterRender(); }
+function render(){
+  // remember which box has the cursor so a re-render (e.g. a toast disappearing) doesn't take it away
+  const a = document.activeElement, keys = ['id','data-live','data-bind'];
+  const key = a && a.matches && a.matches('input,textarea') ? keys.map(k=>[k, a.getAttribute(k)]).find(([,v])=>v) : null;
+  let pos = null; try{ pos = a.selectionStart; }catch(_){}
+  const r = routes[state.route] || routes.dashboard;
+  document.getElementById('app').innerHTML = layout(r());
+  if(key){
+    const el = document.querySelector(key[0]==='id' ? '#'+CSS.escape(key[1]) : `[${key[0]}="${key[1]}"]`);
+    if(el){
+      el.focus();
+      const toEnd = () => { const v = el.value; el.value = ''; el.value = v; };
+      try{ pos!=null ? el.setSelectionRange(pos,pos) : toEnd(); }catch(_){ toEnd(); }
+    }
+  }
+  afterRender();
+}
 
 function afterRender(){
   if(state.route === 'dispatch'){
@@ -208,12 +242,15 @@ function fmtDateTime(iso){
 const PERSON_STATUS = { active:'Active', inactive:'Inactive', temporary_inactive:'Temporary Inactive' };
 const DAY_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const DAY_LONG = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const WORK_DAYS = [0,1,2,3,4,5]; // Sunday–Friday (no Shabbos)
+// days to highlight by default: the given date's weekday, or none on Shabbos
+function defaultVolDays(date){ const d = (date ? new Date(date) : new Date()).getDay(); return d === 6 ? [] : [d]; }
 const WASH_FREQ = { weekly:'Once a week', three_monthly:'Three times a month', twice_monthly:'Twice a month', once_monthly:'Once a month' };
 const WASH_DAYS = { weekly:7, three_monthly:10, twice_monthly:15, once_monthly:30 }; // days allowed between completed washes
 const DONE = ['completed','not_covered','cancelled'];
 function capacityLabel(c){ return c==='4plus' ? "4 bag's plus" : c ? `${c} bag's` : '—'; }
 function availableOn(v, day){ return (v.available_days||[]).includes(day); }
-function daysLabel(v){ return (v.available_days||[]).slice().sort().map(i=>DAY_SHORT[i]).join(', '); }
+function daysLabel(v, only){ return (v.available_days||[]).filter(i=>i<6 && (!only || only.includes(i))).sort().map(i=>DAY_SHORT[i]).join(', '); }
 function profileName(id){ const p = byId(state.profiles, id); return p ? (p.name || p.email.split('@')[0]) : ''; }
 function fmtShortDate(iso){ return iso ? new Date(iso).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : ''; }
 const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
@@ -365,11 +402,13 @@ function layout(innerHtml){
   }
   if(state.loading){ return `<div class="header"><span class="title">Nekius Dispatch</span></div><div class="main"><div class="empty">Loading…</div></div>`; }
   const titles = {dashboard:'Dashboard',dispatch:'Dispatch',clients:'Clients',volunteers:'Volunteers',drivers:'Drivers',history:'Request History',settings:'Settings',client:'Client',volunteer:'Volunteer',driver:'Driver'};
+  const isProfilePage = ['client','volunteer','driver'].includes(state.route);
   return `
     <div class="header">
+      ${isProfilePage ? `<button class="icon-btn" data-action="go-back" title="Back">&#8592;</button>` : ''}
       <button class="icon-btn" data-action="toggle-menu">&#9776;</button>
       <span class="title">${titles[state.route]||'Nekius Dispatch'}</span>
-      <div class="avatar">${esc(initials(state.profile?.name||state.profile?.email||'?'))}</div>
+      <button class="avatar" data-action="open-modal" data-modal="myProfile" title="My profile">${esc(initials(state.profile?.name||state.profile?.email||'?'))}</button>
     </div>
     <div class="main">${innerHtml}</div>
     <div class="footer">Nekius Dispatch &mdash; ${esc(state.profile?.role||'')}</div>
@@ -390,7 +429,6 @@ function hamburgerMenu(){
       <div style="font-weight:800;font-size:18px;margin-bottom:14px;">Nekius Dispatch</div>
       ${items.map(([r,l])=>`<div class="nav-item ${state.route===r?'active':''}" data-nav="${r}">${l}</div>`).join('')}
       <hr class="sep">
-      <div class="nav-item" data-action="open-modal" data-modal="myName">My name: ${esc(state.profile?.name || 'not set')}</div>
       <div class="nav-item" data-action="logout">Log out</div>
     </div>
   </div>`;
@@ -418,18 +456,67 @@ function authScreen(){
 }
 
 /* ============================= Dashboard ============================= */
+// A request is "open" while it's waiting for someone to be assigned: a volunteer, or a driver for either leg
+function needsPerson(r){
+  return r.status==='open' || r.status==='assigned' || r.status==='finished'
+    || (r.status==='posted_pickup' && !r.pickup_driver_id) || (r.status==='posted_return' && !r.return_driver_id);
+}
+// kept as a list: number-like object keys would be reordered by JavaScript
+const PERIODS = [['today','Today'], ['7','7 days'], ['30','30 days'], ['90','90 days'], ['365','1 year'], ['all','All time']];
+function inPeriod(iso, period){
+  if(!iso) return false;
+  const d = new Date(iso);
+  if(period==='all') return true;
+  if(period==='today') return d.toDateString() === new Date().toDateString();
+  return Date.now() - d.getTime() <= Number(period) * 86400000;
+}
+function topList(kind, counts){
+  const rows = Object.entries(counts).map(([id,n])=>[byId(state[kind+'s'], id), n]).filter(([p])=>p).sort((a,b)=> b[1]-a[1] || a[0].name.localeCompare(b[0].name)).slice(0,5);
+  if(!rows.length) return `<div class="sub" style="padding:6px 0;">No completed calls in this period.</div>`;
+  return rows.map(([p,n],i)=>`<div class="top-row"><span class="rank">${i+1}</span><span class="name-link" data-nav="${kind}" data-id="${p.id}">${esc(p.name)}</span><b>${n}</b></div>`).join('');
+}
 function dashboard(){
-  const active = s => state.requests.filter(r=> !['completed','not_covered','cancelled'].includes(r.status) && (s? r.status===s : true));
-  const openCount = active('open').length;
-  const inProgress = state.requests.filter(r=> STATUS_FLOW.includes(r.status) && r.status!=='open').length;
-  const completedToday = state.requests.filter(r=> r.status==='completed' && r.updated_at && new Date(r.updated_at).toDateString()===new Date().toDateString()).length;
+  const active = state.requests.filter(r=>!DONE.includes(r.status));
+  const completed = state.requests.filter(r=>r.status==='completed');
+  const doneIn = period => completed.filter(r=>inPeriod(r.completed_at || r.updated_at, period)).length;
+  const period = state.topPeriod || '30';
+  const volCounts = {}, drvCounts = {};
+  completed.filter(r=>inPeriod(r.completed_at || r.updated_at, period)).forEach(r=>{
+    if(r.volunteer_id) volCounts[r.volunteer_id] = (volCounts[r.volunteer_id]||0) + 1;
+    // each leg a driver drove counts as one trip
+    if(r.pickup_driver_id) drvCounts[r.pickup_driver_id] = (drvCounts[r.pickup_driver_id]||0) + 1;
+    if(r.return_driver_id) drvCounts[r.return_driver_id] = (drvCounts[r.return_driver_id]||0) + 1;
+  });
   return `
     <div class="section-title">Welcome back${state.profile?.name ? ', ' + esc(state.profile.name) : ''}</div>
-    ${!state.profile?.name ? `<div class="card" style="background:var(--blue-light);"><b>Add your name</b><div class="sub">So everyone can see who created each request.</div><div class="btn btn-primary btn-sm" style="margin-top:10px;" data-action="open-modal" data-modal="myName">Set my name</div></div>` : ''}
-    <div class="card" data-nav="dispatch"><div class="row-between"><div><b>${openCount}</b><div class="sub">Open requests</div></div><span>&rarr;</span></div></div>
-    <div class="card" data-nav="dispatch"><div class="row-between"><div><b>${inProgress}</b><div class="sub">In progress</div></div><span>&rarr;</span></div></div>
-    <div class="card" data-nav="history"><div class="row-between"><div><b>${completedToday}</b><div class="sub">Completed today</div></div><span>&rarr;</span></div></div>
-    <div class="btn btn-primary" data-action="open-modal" data-modal="newRequest" style="margin-top:10px;">+ NEW REQUEST</div>
+    <div class="btn btn-primary" data-action="open-modal" data-modal="newRequest" style="margin-bottom:14px;">+ NEW REQUEST</div>
+    <div class="stat-grid">
+      <div class="card stat" data-action="go-dispatch" data-tab="open">
+        <div class="big">${active.filter(needsPerson).length}</div><div class="label">Open requests</div>
+        <div class="sub">Waiting for a volunteer or driver</div>
+      </div>
+      <div class="card stat" data-action="go-dispatch">
+        <div class="big">${active.length}</div><div class="label">In progress</div>
+        <div class="sub">From Open until Completed</div>
+      </div>
+      <div class="card stat" data-nav="history">
+        <div class="big">${completed.length}</div><div class="label">Completed</div>
+        <div class="stat-lines">
+          <div><span>Today</span><b>${doneIn('today')}</b></div>
+          <div><span>Last 7 days</span><b>${doneIn('7')}</b></div>
+          <div><span>Last 30 days</span><b>${doneIn('30')}</b></div>
+          <div><span>All time</span><b>${completed.length}</b></div>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px;">
+      <div class="row-between"><b style="font-size:17px;">Top volunteers &amp; drivers</b></div>
+      <div class="chip-row" style="margin:10px 0 4px;">${PERIODS.map(([k,l])=>`<div class="chip ${period===k?'active':''}" data-action="set-top-period" data-period="${k}">${l}</div>`).join('')}</div>
+      <div class="two-col top-cols">
+        <div><div class="top-head">Volunteers <span class="sub">&middot; calls</span></div>${topList('volunteer', volCounts)}</div>
+        <div><div class="top-head">Drivers <span class="sub">&middot; trips</span></div>${topList('driver', drvCounts)}</div>
+      </div>
+    </div>
   `;
 }
 
@@ -452,8 +539,11 @@ function dispatch(){
   `;
 }
 
-function personLink(kind, p){
-  return p ? `<span class="name-link" data-nav="${kind}" data-id="${p.id}">${esc(p.name)}</span>` : `<span class="sub">Not assigned yet</span>`;
+function personLink(kind, p, withAddress){
+  if(!p) return `<span class="sub">Not assigned yet</span>`;
+  const phone = p.phone ? ` &middot; <a href="tel:${esc(p.phone.replace(/[^\d+]/g,''))}">${esc(p.phone)}</a>` : '';
+  const addr = withAddress && p.address ? `<div class="person-sub">${esc(p.address)}</div>` : '';
+  return `<span class="name-link" data-nav="${kind}" data-id="${p.id}">${esc(p.name)}</span>${phone}${addr}`;
 }
 
 // One-line summary used for Completed / Not Covered / Cancelled; tap to open the full card
@@ -507,9 +597,10 @@ function requestCard(r){
       </div>
     </div>
     <div class="req-grid">
-      <span class="k">Client</span><span class="v">${personLink('client', client)} <span class="sub">&middot; ${bagsLabel(r.bags)} bag's</span></span>
+      <span class="k">Client</span><span class="v">${personLink('client', client, true)}</span>
+      <span class="k">Bags</span><span class="v">${bagsLabel(r.bags)} bag's</span>
       <span class="k">When</span><span class="v">${fmtDateTime(r.requested_for)}</span>
-      <span class="k">Volunteer</span><span class="v">${personLink('volunteer', vol)}</span>
+      <span class="k">Volunteer</span><span class="v">${personLink('volunteer', vol, true)}</span>
       ${showPickup ? `<span class="k ${pickupFaded?'faded':''}">Pickup driver</span><span class="v ${pickupFaded?'faded':''}">${personLink('driver', pdriver)}</span>` : ''}
       ${showReturn ? `<span class="k">Return driver</span><span class="v">${personLink('driver', rdriver)}</span>` : ''}
     </div>
@@ -532,38 +623,48 @@ function listFilterBar(){
   </div>`;
 }
 
-const VOL_SORTS = { available:'Available on…', name:'Name (A–Z)', readiness:'Due to wash first', capacity:'Most bags first', frequency:'Washes most often first', newest:'Newest first' };
+const VOL_SORTS = { name:'Name (A–Z)', readiness:'Due to wash first', capacity:'Most bags first', frequency:'Washes most often first', newest:'Newest first' };
 function sortVolunteers(list){
   const rank = {amber:0, gray:1, green:2};
   const cap = v => ({'1':1,'2':2,'3':3,'4plus':4}[v.bag_capacity]||0);
   const freq = v => ({weekly:4,three_monthly:3,twice_monthly:2,once_monthly:1}[v.wash_frequency]||0);
   const byName = (a,b) => a.name.localeCompare(b.name);
-  const day = state.volDay;
   const cmp = {
     name: byName,
-    available: (a,b) => (availableOn(b,day) - availableOn(a,day)) || (rank[volunteerReadiness(a)] - rank[volunteerReadiness(b)]) || byName(a,b),
     readiness: (a,b) => (rank[volunteerReadiness(a)] - rank[volunteerReadiness(b)]) || byName(a,b),
     capacity: (a,b) => (cap(b) - cap(a)) || byName(a,b),
     frequency: (a,b) => (freq(b) - freq(a)) || byName(a,b),
     newest: (a,b) => new Date(b.created_at) - new Date(a.created_at),
   }[state.volSort] || byName;
-  return list.slice().sort(cmp);
+  // volunteers free on more of the chosen days come first; the chosen sort orders the rest
+  const free = v => state.volDays.filter(d=>availableOn(v,d)).length;
+  return list.slice().sort((a,b)=> (free(b) - free(a)) || cmp(a,b));
 }
 function volSortControls(){
   const today = new Date().getDay();
+  const filtersOn = state.volDays.length || state.volSort !== 'name';
   return `<div class="sort-row"><label>Sort by</label>
       <select data-setstate="volSort">${Object.entries(VOL_SORTS).map(([k,l])=>`<option value="${k}" ${state.volSort===k?'selected':''}>${l}</option>`).join('')}</select>
+      ${filtersOn ? `<a class="clear-all" data-action="clear-vol-filters">Clear all</a>` : ''}
     </div>
-    ${state.volSort==='available' ? `<div class="chip-row" style="margin-top:8px;">${DAY_SHORT.map((d,i)=>`<div class="chip ${state.volDay===i?'active':''}" data-action="set-vol-day" data-day="${i}">${d}${i===today?' &middot; today':''}</div>`).join('')}</div>` : ''}`;
+    <div class="sub" style="margin-top:8px;">Available on <span class="hint">(tap to choose one or more days, tap again to remove)</span></div>
+    <div class="chip-row" style="margin-top:6px;">${WORK_DAYS.map(i=>`<div class="chip ${state.volDays.includes(i)?'active':''}" data-action="toggle-vol-day" data-day="${i}">${DAY_SHORT[i]}${i===today?' &middot; today':''}</div>`).join('')}</div>`;
 }
 function volunteerTags(v){
   let t = '';
-  if(state.volSort==='available' && availableOn(v, state.volDay)) t += `<span class="tag">Available ${DAY_LONG[state.volDay]}</span>`;
+  const days = daysLabel(v, state.volDays);
+  if(state.volDays.length && days) t += `<span class="tag">Available ${state.volDays.length===1 ? DAY_LONG[state.volDays[0]] : days}</span>`;
   if(v.status==='temporary_inactive') t += `<span class="tag gray">Away</span>`;
   return t;
 }
 function volunteerSub(v){
   return [v.phone, daysLabel(v) && `Available: ${daysLabel(v)}`, v.bag_capacity && capacityLabel(v.bag_capacity)].filter(Boolean).join(' · ');
+}
+function plural(n, word){ return `${n} ${word}${n===1?'':'s'}`; }
+function clientCallTags(c){
+  const reqs = state.requests.filter(r=>r.client_id===c.id);
+  const done = reqs.filter(r=>r.status==='completed').length, active = reqs.filter(r=>!DONE.includes(r.status)).length;
+  return `<span class="tag ${done?'':'gray'}">${plural(done,'call')} done</span>${active ? `<span class="tag gray">${active} active</span>` : ''}`;
 }
 function matchesSearch(p, q){
   if(!q) return true; q = q.toLowerCase();
@@ -576,7 +677,7 @@ function clients(){
     <div class="btn btn-primary" data-action="open-modal" data-modal="addClient">+ ADD CLIENT</div>
     <div style="margin-top:12px;"><input placeholder="Search name, phone or address…" value="${esc(state.draft.clientSearch||'')}" data-live="draft.clientSearch"></div>
     <div style="margin-top:12px;">${listFilterBar()}</div>
-    ${renderPeopleList(list, 'client', c=> [c.is_mashilach ? 'Mashilach' : '', c.phone].filter(Boolean).join(' · '))}
+    ${renderPeopleList(list, 'client', c=> [c.is_mashilach ? 'Mashilach' : '', c.phone].filter(Boolean).join(' · '), null, clientCallTags)}
   `;
 }
 function volunteers(){
@@ -608,8 +709,8 @@ function renderPeopleList(list, kind, subFn, prefixFn, tagFn){
 
 /* ============================= Detail pages ============================= */
 function notesBlock(p){
-  return `${p.note ? `<div class="sub" style="margin-top:8px;"><b>Address note</b> (drivers see this): ${esc(p.note)}</div>` : ''}
-    ${p.private_note ? `<div class="private">&#128274; <b>Private note:</b> ${esc(p.private_note)}</div>` : ''}`;
+  return `${p.note ? `<div class="sub" style="margin-top:8px;"><b>Address instructions:</b> ${esc(p.note)}</div>` : ''}
+    ${p.private_note ? `<div class="private"><b>Note:</b> ${esc(p.private_note)}</div>` : ''}`;
 }
 function requestList(reqs){
   if(reqs.length===0) return `<div class="empty">No requests yet.</div>`;
@@ -699,7 +800,7 @@ function settings(){
   return `<div class="section-title">Settings</div>
     ${settingsSection('mashilach','Mashilach default address', `
       <div class="field"><label>Preset address</label><input id="set-mashilach-address" value="${esc(s.mashilach_address||'')}"></div>
-      <div class="field"><label>Preset address note</label><textarea id="set-mashilach-note" rows="2">${esc(s.mashilach_note||'')}</textarea></div>
+      <div class="field"><label>Preset address instructions</label><textarea id="set-mashilach-note" rows="2">${esc(s.mashilach_note||'')}</textarea></div>
       <div class="btn btn-primary btn-sm" style="margin-top:10px;" data-action="save-mashilach-settings">Save</div>
     `)}
     ${settingsSection('postmsg','Post Message wording', `
@@ -711,13 +812,13 @@ function settings(){
     ${settingsSection('drivermsg','Driver Message templates', `
       <div class="field"><label>Pickup leg template</label><textarea id="set-dm-pickup" rows="4">${esc(s.driver_message_pickup_template||'')}</textarea></div>
       <div class="field"><label>Return leg template</label><textarea id="set-dm-return" rows="4">${esc(s.driver_message_return_template||'')}</textarea></div>
-      <div class="sub">Placeholders: {request_id} {driver_name} {client_name} {client_address} {client_phone} {client_note} {volunteer_name} {volunteer_address} {volunteer_phone} {volunteer_note} {bags} {requested_for}. {client_note} and {volunteer_note} are the <b>address notes</b>; private notes are never copied. To remove something (like the "When" line), just delete that line and Save. A line whose placeholders are all empty is left out, and {bags} is always empty on the return leg.</div>
+      <div class="sub">Placeholders: {request_id} {driver_name} {client_name} {client_address} {client_phone} {client_note} {volunteer_name} {volunteer_address} {volunteer_phone} {volunteer_note} {bags} {requested_for}. {client_note} and {volunteer_note} are the <b>address instructions</b>; the other notes are never copied. To remove something (like the "When" line), just delete that line and Save. A line whose placeholders are all empty is left out, and {bags} is always empty on the return leg.</div>
       <div class="btn btn-primary btn-sm" style="margin-top:10px;" data-action="save-drivermsg-settings">Save</div>
     `)}
     ${settingsSection('users','Dispatcher access', `
       <h4>Invite someone</h4>
       <div class="sub">Add their email here, then tell them to open the app and tap "Sign up" using that same email.</div>
-      <div class="field" style="margin-top:8px;"><input id="new-invite-email" type="email" placeholder="email@example.com"></div>
+      <div class="field" style="margin-top:8px;"><input id="new-invite-email" type="text" inputmode="email" autocapitalize="off" autocorrect="off" placeholder="email@example.com" value="${esc(state.inviteEmail||'')}" data-live="inviteEmail"></div>
       <label>Invite as</label>
       <div class="chip-row" style="margin-bottom:10px;">
         <div class="chip ${(state.inviteRole||'dispatcher')==='dispatcher'?'active':''}" data-action="set-invite-role" data-role="dispatcher">Dispatcher</div>
@@ -749,7 +850,7 @@ function modalHtml(){
     addDriver: ()=>personFormModal('driver', null), editDriver: ()=>personFormModal('driver', m.id),
     statusMenu: statusMenuModal,
     assignPerson: assignPersonModal,
-    myName: myNameModal,
+    myProfile: myProfileModal,
   };
   const fn = map[m.type];
   return `<div class="modal-overlay" data-action="overlay-click"><div class="modal">
@@ -759,8 +860,8 @@ function modalHtml(){
 }
 
 function notesFields(){
-  return `<div class="field"><label>Address note <span class="hint">— drivers see this in the copied message</span></label><textarea data-bind="note" rows="2" placeholder="e.g. Ring bell twice, 3rd floor">${esc(state.draft.note||'')}</textarea></div>
-      <div class="field"><label>Private note <span class="hint">— only dispatchers see this</span></label><textarea data-bind="private_note" rows="2">${esc(state.draft.private_note||'')}</textarea></div>`;
+  return `<div class="field"><label>Address instructions</label><textarea data-bind="note" rows="2" placeholder="e.g. Ring bell twice, 3rd floor">${esc(state.draft.note||'')}</textarea></div>
+      <div class="field"><label>Note</label><textarea data-bind="private_note" rows="2">${esc(state.draft.private_note||'')}</textarea></div>`;
 }
 function personFormModal(kind, id){
   const existing = id ? byId(state[kind+'s'], id) : null;
@@ -789,7 +890,7 @@ function personFormModal(kind, id){
       <div class="field"><label>Address</label><input data-bind="address" value="${esc(state.draft.address||'')}"></div>
       ${notesFields()}
       <label>Available days</label>
-      <div class="chip-row">${DAY_SHORT.map((dn,i)=>`<div class="chip ${days.includes(i)?'active':''}" data-action="toggle-day" data-day="${i}">${dn}</div>`).join('')}</div>
+      <div class="chip-row">${WORK_DAYS.map(i=>`<div class="chip ${days.includes(i)?'active':''}" data-action="toggle-day" data-day="${i}">${DAY_SHORT[i]}</div>`).join('')}</div>
       <label>Bag capacity</label>
       <div class="chip-row">${['1','2','3','4plus'].map(b=>`<div class="chip ${state.draft.bag_capacity===b?'active':''}" data-action="set-draft" data-field="bag_capacity" data-value="${b}">${capacityLabel(b)}</div>`).join('')}</div>
       <label>Wash frequency</label>
@@ -932,13 +1033,25 @@ function assignPersonModal(){
     ${pickerResults(field)}`;
 }
 
-function myNameModal(){
-  return `<h2>Your name</h2>
-    <div class="sub">Shown on every request you create, so everyone knows who posted it.</div>
-    <div class="field" style="margin-top:10px;"><input id="my-name" value="${esc(state.profile?.name||'')}" placeholder="e.g. Yidel"></div>
-    <div class="btn-row" style="margin-top:14px;">
-      <button class="btn btn-outline" data-action="close-modal">Cancel</button>
-      <button class="btn btn-primary" data-action="save-my-name">Save</button>
+function myProfileModal(){
+  const me = state.profile || {};
+  if(state.draft._editing){
+    return `<h2>Edit my name</h2>
+      <div class="field"><input id="my-name" value="${esc(me.name||'')}" placeholder="Your name"></div>
+      <div class="btn-row" style="margin-top:14px;">
+        <button class="btn btn-outline" data-action="set-draft" data-field="_editing" data-value="">Cancel</button>
+        <button class="btn btn-primary" data-action="save-my-name">Save</button>
+      </div>`;
+  }
+  return `<h2>My profile</h2>
+    <div style="display:flex;align-items:center;gap:14px;">
+      <div class="avatar" style="width:52px;height:52px;font-size:18px;background:var(--blue);">${esc(initials(me.name||me.email||'?'))}</div>
+      <div><div style="font-size:20px;font-weight:800;">${esc(me.name || 'No name yet')}</div>
+        <div class="sub">${esc(me.email||'')} &middot; ${me.role==='editor'?'Editor':'Dispatcher'}</div></div>
+    </div>
+    <div class="btn-row" style="margin-top:18px;">
+      <button class="btn btn-outline" data-action="set-draft" data-field="_editing" data-value="1">${ICON_EDIT} Edit name</button>
+      <button class="btn btn-danger" data-action="logout">Log out</button>
     </div>`;
 }
 
@@ -956,6 +1069,8 @@ function initEvents(){
     // A nav element wins when it is nested inside the action element (e.g. menu items inside the menu overlay)
     if(navEl && (!actionEl || actionEl.contains(navEl))){
       const r = navEl.getAttribute('data-nav');
+      if(navEl.classList.contains('nav-item')) state.navStack = [];
+      else if(['client','volunteer','driver'].includes(r)) state.navStack.push({route: state.route, routeId: state.routeId});
       state.route = r; state.routeId = navEl.getAttribute('data-id')||null; state.menuOpen=false; state.modal=null; state.draft={}; state.modalStack=[];
       render(); window.scrollTo(0,0); return;
     }
@@ -989,10 +1104,26 @@ function initEvents(){
       case 'open-modal':
         state.modal = {type: actionEl.getAttribute('data-modal'), id: actionEl.getAttribute('data-id')};
         state.draft = {}; state.modalStack = []; state.pickerSearch = {}; state.menuOpen = false;
-        if(state.modal.type==='newRequest'){ state.volSort = 'available'; state.volDay = new Date().getDay(); }
+        if(state.modal.type==='newRequest'){ state.volDays = defaultVolDays(); }
         render(); break;
       case 'close-modal': closeModal(); break;
-      case 'set-vol-day': state.volDay = Number(actionEl.getAttribute('data-day')); render(); break;
+      case 'toggle-vol-day': {
+        const day = Number(actionEl.getAttribute('data-day'));
+        state.volDays = state.volDays.includes(day) ? state.volDays.filter(d=>d!==day) : [...state.volDays, day].sort();
+        render(); break;
+      }
+      case 'clear-vol-filters':
+        state.volDays = []; state.volSort = 'name'; state.draft.volSearch = ''; state.pickerSearch.volunteer_id = '';
+        if(state.route==='volunteers') state.listFilter = 'active';
+        render(); break;
+      case 'set-top-period': state.topPeriod = actionEl.getAttribute('data-period'); render(); break;
+      case 'go-dispatch': state.route = 'dispatch'; if(actionEl.getAttribute('data-tab')) state.dispatchTab = actionEl.getAttribute('data-tab'); state.navStack = []; render(); window.scrollTo(0,0); break;
+      case 'go-back': {
+        const prev = state.navStack.pop();
+        if(prev){ state.route = prev.route; state.routeId = prev.routeId; }
+        else { state.route = state.route + 's'; state.routeId = null; } // e.g. client -> clients
+        render(); window.scrollTo(0,0); break;
+      }
       case 'toggle-day': {
         const day = Number(actionEl.getAttribute('data-day')); const days = new Set(state.draft.available_days||[]);
         days.has(day) ? days.delete(day) : days.add(day);
@@ -1020,7 +1151,7 @@ function initEvents(){
         const r = byId(state.requests, Number(actionEl.getAttribute('data-id')));
         state.modal = {type:'assignPerson', id:r.id, field: actionEl.getAttribute('data-field')};
         state.modalStack = []; state.pickerSearch = {}; state.draft = {};
-        state.volSort = 'available'; state.volDay = r.requested_for ? new Date(r.requested_for).getDay() : new Date().getDay();
+        state.volDays = defaultVolDays(r.requested_for);
         render(); break;
       }
       case 'advance': {
@@ -1036,7 +1167,7 @@ function initEvents(){
         const {error} = await sb.rpc('set_my_name', {new_name: name});
         if(error){ showToast(error.message); break; }
         state.profile.name = name; const me = byId(state.profiles, state.profile.id); if(me) me.name = name;
-        state.modal = null; showToast('Saved'); break;
+        state.draft._editing = ''; showToast('Saved'); break;
       }
       case 'dispatch-tab': state.dispatchTab = actionEl.getAttribute('data-tab'); render(); break;
       case 'list-filter': state.listFilter = actionEl.getAttribute('data-f'); render(); break;
@@ -1069,10 +1200,11 @@ function initEvents(){
       case 'save-postmsg-settings': await updateSettings({post_message_template: {before:document.getElementById('set-pm-before').value, between:document.getElementById('set-pm-between').value, after:document.getElementById('set-pm-after').value}}); showToast('Saved'); render(); break;
       case 'save-drivermsg-settings': await updateSettings({driver_message_pickup_template: document.getElementById('set-dm-pickup').value, driver_message_return_template: document.getElementById('set-dm-return').value}); showToast('Saved'); render(); break;
       case 'send-invite': {
-        const email = document.getElementById('new-invite-email').value.trim();
+        const email = (state.inviteEmail||'').trim();
         const role = state.inviteRole || 'dispatcher';
         if(!/^\S+@\S+\.\S+$/.test(email)){ showToast('Enter a valid email'); break; }
-        if(await addInvite(email, role)) showToast(`Invited as ${role==='editor'?'Editor':'Dispatcher'} — they can now sign up with ${email}`);
+        if(await addInvite(email, role)){ state.inviteEmail = ''; state.inviteRole = 'dispatcher'; }
+        if(state.invites.some(i=>i.email===email.toLowerCase())) showToast(`Invited as ${role==='editor'?'Editor':'Dispatcher'} — they can now sign up with ${email}`);
         break;
       }
       case 'set-invite-role': state.inviteRole = actionEl.getAttribute('data-role'); render(); break;
@@ -1092,7 +1224,11 @@ function initEvents(){
       const key = liveEl.getAttribute('data-live'); const pos = liveEl.selectionStart;
       render();
       const again = document.querySelector(`[data-live="${key}"]`);
-      if(again){ again.focus(); try{ again.setSelectionRange(pos,pos); }catch(_){} }
+      if(again){
+        again.focus();
+        // email inputs don't support setSelectionRange; re-setting the value puts the cursor at the end instead
+        try{ again.setSelectionRange(pos,pos); }catch(_){ const v = again.value; again.value = ''; again.value = v; }
+      }
       return;
     }
     const bindEl = e.target.closest('[data-bind]');
@@ -1106,7 +1242,7 @@ function initEvents(){
     if(bindEl){
       state.draft[bindEl.getAttribute('data-bind')] = bindEl.value;
       // volunteers available on the requested day float to the top of the picker
-      if(bindEl.getAttribute('data-bind')==='requested_for' && bindEl.value){ state.volDay = new Date(bindEl.value).getDay(); render(); }
+      if(bindEl.getAttribute('data-bind')==='requested_for' && bindEl.value){ state.volDays = defaultVolDays(bindEl.value); render(); }
     }
   });
 }
