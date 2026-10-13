@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Nekius Dispatch</title>
+<title>Kvisa Dispatch</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧺</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -534,25 +534,25 @@ async function removeProfile(id){ const ok = await deleteRow('profiles', id); if
 function layout(innerHtml){
   if(!state.session){ return authScreen(); }
   if(state.session && !state.profile && !state.loading){
-    return `<div class="header"><span class="title">Nekius Dispatch</span></div>
+    return `<div class="header"><span class="title">Kvisa Dispatch</span></div>
     <div class="main" style="max-width:420px;"><div class="card">
       <b>No access yet</b>
       <div style="margin-top:6px;color:var(--ink-soft);">You're signed in as ${esc(state.session.user?.email||'')}, but this account hasn't been given access. Ask an Editor to invite this email address.</div>
       <div class="btn btn-outline" style="margin-top:14px;" data-action="logout">Log out</div>
     </div></div>`;
   }
-  if(state.loading){ return `<div class="header"><span class="title">Nekius Dispatch</span></div><div class="main"><div class="empty">Loading…</div></div>`; }
+  if(state.loading){ return `<div class="header"><span class="title">Kvisa Dispatch</span></div><div class="main"><div class="empty">Loading…</div></div>`; }
   const titles = {dashboard:'Dashboard',dispatch:'Dispatch',clients:'Clients',volunteers:'Volunteers',drivers:'Drivers',history:'Request History',settings:'Settings',client:'Client Details',volunteer:'Volunteer Details',driver:'Driver Details'};
   // the round + button hides while a filter panel is open so it can't cover the panel's buttons
   const fab = state.filterOpen[state.route] ? null : {clients:'addClient', volunteers:'addVolunteer', drivers:'addDriver'}[state.route];
   return `
     <div class="header">
       <button class="icon-btn" data-action="toggle-menu" aria-label="Menu">${icon('menu')}</button>
-      <span class="title">${titles[state.route]||'Nekius Dispatch'}</span>
+      <span class="title">${titles[state.route]||'Kvisa Dispatch'}</span>
       <button class="avatar" data-action="open-modal" data-modal="myProfile" title="My profile">${esc(initials(state.profile?.name||state.profile?.email||'?'))}</button>
     </div>
     <div class="main">${innerHtml}</div>
-    <div class="footer">Nekius Dispatch</div>
+    <div class="footer">Kvisa Dispatch</div>
     ${fab ? `<button class="fab" data-action="open-modal" data-modal="${fab}" aria-label="Add">${icon('plus')}</button>` : ''}
     ${state.menuOpen ? hamburgerMenu() : ''}
     ${state.modal ? modalHtml() : ''}
@@ -569,7 +569,7 @@ function hamburgerMenu(){
   const current = {client:'clients', volunteer:'volunteers', driver:'drivers'}[state.route] || state.route;
   return `<div class="hamburger-menu" data-action="close-menu">
     <div class="hamburger-panel">
-      <div class="drawer-head"><span class="basket">&#129530;</span><div class="brand-name">Nekius Dispatch</div></div>
+      <div class="drawer-head"><span class="basket">&#129530;</span><div class="brand-name">Kvisa Dispatch</div></div>
       <div class="drawer-nav">
         ${items.map(([r,l,ic])=>`<div class="nav-item ${current===r?'active':''}" data-nav="${r}">${icon(ic)}<span>${l}</span></div>`).join('')}
         <hr class="sep">
@@ -582,7 +582,7 @@ function hamburgerMenu(){
 /* ============================= Auth screen ============================= */
 function authScreen(){
   const isLogin = state.authMode === 'login';
-  return `<div class="header"><span class="title">Nekius Dispatch</span></div>
+  return `<div class="header"><span class="title">Kvisa Dispatch</span></div>
   <div class="main" style="max-width:420px;">
     <div class="section-title">${isLogin?'Log in':'Sign up'}</div>
     <div class="card">

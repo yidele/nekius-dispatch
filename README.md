@@ -1,6 +1,6 @@
-# Nekius Dispatch
+# Kvisa Dispatch
 
-Dispatcher web app for the Nekius volunteer laundry organization.
+Dispatcher web app for the Kvisa volunteer laundry organization.
 
 - Live site: https://yidele.github.io/nekius-dispatch/
 - `index.html`: the whole app (vanilla JS, no build step), served by GitHub Pages from `main`.
