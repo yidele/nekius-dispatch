@@ -113,8 +113,21 @@ copied to the clipboard for the dispatcher to paste into SMS/WhatsApp:
    bag count, date/time, etc.). Bag count is omitted on the return-leg
    template since the washer packages freely.
 
+The Driver Message includes a Google Maps link under each address
+(`{client_map}` / `{volunteer_map}`; templates that use neither get them
+added under the address lines automatically).
+
 Street-only extraction is a heuristic: strip a leading house number and
 common street-type suffixes from a full address.
+
+## Addresses
+Every address form (Client, Volunteer, Driver, Mashilach preset) is split
+into Street / Apt-Unit / City / State / ZIP, with suggestions while typing
+and an automatic check, both from Photon (free OpenStreetMap geocoder, no
+API key, US results only — `ADDRESS_COUNTRY` in `index.html`). Saving a
+changed address that couldn't be verified asks for confirmation. The parts
+are joined into the single `address` column ("123 Main St, Apt 4,
+Brooklyn, NY 11211"), so no schema change was needed.
 
 ## Navigation & roles
 
@@ -178,7 +191,6 @@ before this handoff — sign-up, login, and CRUD against the real database
 from the deployed GitHub Pages site still need to be verified live.
 
 ## Explicitly deferred / not yet built
-- Address autocomplete (would need a server-proxied Places API key)
 - Real SMS/WhatsApp sending (would need a provider like Twilio) — for now
   messages are copy-to-clipboard only, sent manually by the dispatcher
 - "Forgot password?" flow (Supabase supports `resetPasswordForEmail`,
