@@ -191,6 +191,7 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .msg-preview{white-space:pre-wrap;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:13.5px;color:var(--ink-soft);}
 .send-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
 .send-grid .btn{text-decoration:none;}
+.added-on{font-size:11px;color:var(--ink-faint);font-weight:600;margin:10px 0 -4px 2px;}
 .meta{font-size:11.5px;color:var(--ink-faint);text-align:center;margin:18px 0 4px;line-height:1.7;}
 .person-box.faded{padding:5px 11px;font-size:12px;opacity:.75;}
 .person-box.faded .role{font-size:10px;}
@@ -748,12 +749,19 @@ function dispatch(){
   `;
 }
 
+// the day a person was put on a request — only shown when it isn't the request's own day
+function addedOn(r, iso){
+  if(!iso) return '';
+  const base = r.requested_for || r.created_at;
+  if(base && localDay(iso).getTime() === localDay(base).getTime()) return '';
+  return new Date(iso).toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
+}
 function telLink(phone){ return phone ? `<a href="tel:${esc(phone.replace(/[^\d+]/g,''))}">${esc(phone)}</a>` : ''; }
 // opens the device's maps app (Google Maps link works on iPhone, iPad and Android)
 function mapLink(address){ return address ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}" target="_blank" rel="noopener">${esc(address)}</a>` : ''; }
 function personBox(role, kind, p, opts={}){
   if(!p) return '';
-  return `<div class="person-box ${opts.faded?'faded':''}">
+  return `${opts.when ? `<div class="added-on">${esc(opts.when)}</div>` : ''}<div class="person-box ${opts.faded?'faded':''} ${opts.when?'dated':''}">
     ${opts.removeField ? `<button class="box-x" title="Remove ${role.toLowerCase()}" data-action="unassign" data-id="${opts.reqId}" data-field="${opts.removeField}">${icon('x')}</button>` : ''}
     <span class="role">${role}</span>
     <span class="name-link" data-nav="${kind}" data-id="${p.id}">${esc(p.name)}</span>${p.phone ? ` &middot; ${telLink(p.phone)}` : ''}
@@ -816,9 +824,9 @@ function requestCard(r){
     ${client ? `<div class="req-line">${icon('client')} <span class="name-link" data-nav="client" data-id="${client.id}">${esc(client.name)}</span>${client.is_mashilach ? `<span class="tag mash">Mashilach</span>` : ''}${client.phone ? ` &middot; ${telLink(client.phone)}` : ''}</div>
       ${client.address ? `<div class="req-line">${icon('pin')} ${mapLink(client.address)}</div>` : ''}` : `<div class="req-line">${icon('client')} No client</div>`}
     <div class="req-line">${icon('bag')} ${bagsLabel(r.bags)} bag's &middot; ${icon('calendar')} ${fmtDateTime(r.requested_for)}</div>
-    ${personBox('Volunteer', 'volunteer', vol, {address:true, reqId:r.id, removeField: isDone ? null : 'volunteer_id'})}
-    ${personBox('Pickup driver', 'driver', pdriver, {faded: pickupFaded, reqId:r.id, removeField: isDone ? null : 'pickup_driver_id'})}
-    ${personBox('Return driver', 'driver', rdriver, {reqId:r.id, removeField: isDone ? null : 'return_driver_id'})}
+    ${personBox('Volunteer', 'volunteer', vol, {address:true, reqId:r.id, removeField: isDone ? null : 'volunteer_id', when: addedOn(r, r.volunteer_assigned_at)})}
+    ${personBox('Pickup driver', 'driver', pdriver, {faded: pickupFaded, reqId:r.id, removeField: isDone ? null : 'pickup_driver_id', when: addedOn(r, r.pickup_assigned_at)})}
+    ${personBox('Return driver', 'driver', rdriver, {reqId:r.id, removeField: isDone ? null : 'return_driver_id', when: addedOn(r, r.return_assigned_at)})}
     ${r.notes ? `<div class="private">${esc(r.notes)}</div>` : ''}
     ${actions ? `<div class="req-actions">${actions}</div>` : ''}
     ${DONE.includes(r.status) ? `<div style="text-align:center;margin-top:10px;"><a style="cursor:pointer;font-size:13px;color:var(--ink-faint);" data-action="toggle-expand" data-id="${r.id}">Show less &#9650;</a></div>` : ''}
@@ -1039,9 +1047,11 @@ function occursOn(t, day){
     const next = new Date(d); next.setDate(d.getDate()+7);
     return (t.month_weeks||[]).includes(n) || ((t.month_weeks||[]).includes(5) && next.getMonth() !== d.getMonth());
   }
+  // count weeks from the first chosen day on or after the start date
   const start = localDay((t.start_date || ymd(new Date())) + 'T00:00');
+  const first = new Date(start); first.setDate(start.getDate() + Math.min(...(t.days||[]).map(dd => (dd - start.getDay() + 7) % 7)));
   const weekOf = x => { const y = new Date(x); y.setDate(y.getDate() - y.getDay()); return y; };
-  const weeks = Math.round((weekOf(d) - weekOf(start)) / (7*86400000));
+  const weeks = Math.round((weekOf(d) - weekOf(first)) / (7*86400000));
   return weeks % (t.interval_weeks || 1) === 0;
 }
 function describeRepeat(t){

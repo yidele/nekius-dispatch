@@ -420,3 +420,37 @@ create policy volunteers_delete_editor on volunteers as restrictive for delete t
 create policy drivers_delete_editor on drivers as restrictive for delete to authenticated using (is_editor());
 -- requests.client_id / volunteer_id / pickup_driver_id / return_driver_id: on delete set null
 -- recurring_requests.client_id: on delete cascade; its volunteer / driver ids: on delete set null
+
+-- 2026-10-16: when each person was put on a request (set by the touch_request trigger)
+alter table requests add column if not exists volunteer_assigned_at timestamptz;
+alter table requests add column if not exists pickup_assigned_at timestamptz;
+alter table requests add column if not exists return_assigned_at timestamptz;
+create or replace function touch_request() returns trigger language plpgsql set search_path = public as $$
+begin
+  new.updated_at := now();
+  if new.status = 'completed' and (tg_op = 'INSERT' or old.status is distinct from 'completed') then new.completed_at := now();
+  elsif new.status <> 'completed' then new.completed_at := null; end if;
+  if new.volunteer_id is null then new.volunteer_assigned_at := null;
+  elsif tg_op = 'INSERT' or new.volunteer_id is distinct from old.volunteer_id then new.volunteer_assigned_at := now(); end if;
+  if new.pickup_driver_id is null then new.pickup_assigned_at := null;
+  elsif tg_op = 'INSERT' or new.pickup_driver_id is distinct from old.pickup_driver_id then new.pickup_assigned_at := now(); end if;
+  if new.return_driver_id is null then new.return_assigned_at := null;
+  elsif tg_op = 'INSERT' or new.return_driver_id is distinct from old.return_driver_id then new.return_assigned_at := now(); end if;
+  return new;
+end;
+$$;
+
+-- 2026-10-16: "every N weeks" counts from the first chosen day on or after the start date
+create or replace function recurring_occurs(rr recurring_requests, d date) returns boolean language plpgsql immutable as $$
+declare n int; wk int; first_day date;
+begin
+  if d < rr.start_date or not (extract(dow from d)::int = any(rr.days)) then return false; end if;
+  if rr.repeat = 'monthly' then
+    n := (extract(day from d)::int - 1) / 7 + 1;
+    return n = any(rr.month_weeks) or (5 = any(rr.month_weeks) and extract(month from d + 7) <> extract(month from d));
+  end if;
+  select rr.start_date + min((dd - extract(dow from rr.start_date)::int + 7) % 7) into first_day from unnest(rr.days) dd;
+  wk := ((d - extract(dow from d)::int) - (first_day - extract(dow from first_day)::int)) / 7;
+  return wk % rr.interval_weeks = 0;
+end;
+$$;
