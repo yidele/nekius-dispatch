@@ -192,6 +192,31 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .send-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
 .send-grid .btn{text-decoration:none;}
 .added-on{font-size:11px;color:var(--ink-faint);font-weight:600;margin:10px 0 -4px 2px;}
+/* ---------- layout helpers (one column on phones) ---------- */
+.side-nav{display:none;}
+.card-grid,.list-grid,.profile-grid,.row-list{display:block;}
+/* ---------- computers and big screens ---------- */
+@media (min-width: 1024px){
+  .shell{display:flex;min-height:100vh;}
+  .side-nav{display:flex;flex-direction:column;width:250px;flex-shrink:0;position:sticky;top:0;height:100vh;background:var(--surface);border-right:1px solid var(--line);}
+  .shell-main{flex:1;min-width:0;display:flex;flex-direction:column;}
+  .menu-btn{display:none!important;}
+  .header{padding:14px 32px;}
+  .main{max-width:1320px;padding:24px 32px 100px;}
+  .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:14px;align-items:start;}
+  .card-grid > .card{margin-bottom:0;}
+  .list-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;align-items:start;}
+  .list-grid > .list-card{margin-bottom:0;}
+  .profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;align-items:start;}
+  .profile-grid > .section-card{margin-top:0;}
+  .stat-grid{grid-template-columns:repeat(3,1fr);}
+  .top-grid{grid-template-columns:1fr 1fr;}
+  .toolbar .search-box{max-width:520px;}
+  .main > .btn-primary:first-child, .page-head + .btn-primary{max-width:320px;}
+  .fab{right:32px;bottom:32px;}
+  .list-card:hover,.req-row:hover{border-color:var(--primary);box-shadow:var(--shadow);}
+}
+@media (min-width: 1500px){ .card-grid{grid-template-columns:repeat(auto-fill,minmax(400px,1fr));} }
 .meta{font-size:11.5px;color:var(--ink-faint);text-align:center;margin:18px 0 4px;line-height:1.7;}
 .person-box.faded{padding:5px 11px;font-size:12px;opacity:.75;}
 .person-box.faded .role{font-size:10px;}
@@ -569,14 +594,17 @@ function layout(innerHtml){
   // the round + button hides while a filter panel is open so it can't cover the panel's buttons
   const fab = state.filterOpen[state.route] ? null
     : {clients:'addClient', volunteers:'addVolunteer', drivers:'addDriver', recurring: isEditor() ? 'recurringForm' : null}[state.route];
-  return `
+  return `<div class="shell">
+    <aside class="side-nav">${navPanel()}</aside>
+    <div class="shell-main">
     <div class="header">
-      <button class="icon-btn" data-action="toggle-menu" aria-label="Menu">${icon('menu')}</button>
+      <button class="icon-btn menu-btn" data-action="toggle-menu" aria-label="Menu">${icon('menu')}</button>
       <span class="title">${titles[state.route]||'Kvisa Dispatch'}</span>
       <button class="avatar" data-action="open-modal" data-modal="myProfile" title="My profile">${esc(initials(state.profile?.name||state.profile?.email||'?'))}</button>
     </div>
     <div class="main">${innerHtml}</div>
     <div class="footer">Kvisa Dispatch</div>
+    </div></div>
     ${fab ? `<button class="fab" data-action="open-modal" data-modal="${fab}" aria-label="Add">${icon('plus')}</button>` : ''}
     ${state.menuOpen ? hamburgerMenu() : ''}
     ${state.modal ? modalHtml() : ''}
@@ -585,22 +613,22 @@ function layout(innerHtml){
 }
 
 function hamburgerMenu(){
+  return `<div class="hamburger-menu" data-action="close-menu"><div class="hamburger-panel">${navPanel()}</div></div>`;
+}
+// the menu itself: slides in on phones and tablets, always shown on the left on computers
+function navPanel(){
   const items = [
     ['dashboard','Dashboard','dash'], ['dispatch','Dispatch','dispatch'], ['clients','Clients','client'],
     ['volunteers','Volunteers','volunteer'], ['drivers','Drivers','driver'], ['recurring','Recurring Requests','repeat'], ['history','Request History','history'],
   ];
   if(state.profile?.role === 'editor') items.push(['settings','Settings','settings']);
   const current = {client:'clients', volunteer:'volunteers', driver:'drivers'}[state.route] || state.route;
-  return `<div class="hamburger-menu" data-action="close-menu">
-    <div class="hamburger-panel">
-      <div class="drawer-head"><span class="basket">&#129530;</span><div class="brand-name">Kvisa Dispatch</div></div>
-      <div class="drawer-nav">
-        ${items.map(([r,l,ic])=>`<div class="nav-item ${current===r?'active':''}" data-nav="${r}">${icon(ic)}<span>${l}</span></div>`).join('')}
-        <hr class="sep">
-        <div class="nav-item" data-action="logout">${icon('logout')}<span>Log out</span></div>
-      </div>
-    </div>
-  </div>`;
+  return `<div class="drawer-head"><span class="basket">&#129530;</span><div class="brand-name">Kvisa Dispatch</div></div>
+    <div class="drawer-nav">
+      ${items.map(([r,l,ic])=>`<div class="nav-item ${current===r?'active':''}" data-nav="${r}">${icon(ic)}<span>${l}</span></div>`).join('')}
+      <hr class="sep">
+      <div class="nav-item" data-action="logout">${icon('logout')}<span>Log out</span></div>
+    </div>`;
 }
 
 /* ============================= Auth screen ============================= */
@@ -718,7 +746,7 @@ function groupByDay(list, finished){
     if(!groups.length || groups[groups.length-1].label !== label) groups.push({label, items:[]});
     groups[groups.length-1].items.push(r);
   });
-  return groups.map(g=>`${g.label ? `<div class="date-group-label">${esc(g.label)}</div>` : '<div style="height:12px"></div>'}${g.items.map(requestCard).join('')}`).join('');
+  return groups.map(g=>`${g.label ? `<div class="date-group-label">${esc(g.label)}</div>` : '<div style="height:12px"></div>'}<div class="${finished ? 'row-list' : 'card-grid'}">${g.items.map(requestCard).join('')}</div>`).join('');
 }
 const TAB_ICONS = { open:'info', assigned:'volunteer', posted_pickup:'truck', delivered:'box', finished:'wash', posted_return:'truck', completed:'check', not_covered:'alert', cancelled:'x' };
 // the Completed tab only keeps today's and yesterday's; older ones live in Request History
@@ -937,7 +965,7 @@ function peoplePage(listName, kind, renderItem){
   const list = applyFilters(all, kind);
   return `<div class="page-head"><h2>${listName.charAt(0).toUpperCase()+listName.slice(1)}</h2><div class="sub">${all.length} total${list.length!==all.length ? ` &middot; showing ${list.length}` : ''}</div></div>
     ${filterPanel(listName)}
-    ${list.length===0 ? `<div class="empty">No ${listName} to show.</div>` : list.map(renderItem).join('')}`;
+    ${list.length===0 ? `<div class="empty">No ${listName} to show.</div>` : `<div class="list-grid">${list.map(renderItem).join('')}</div>`}`;
 }
 function clients(){
   return peoplePage('clients', 'client', c => listCard('client', c, '', [
@@ -985,7 +1013,7 @@ function hero(name, badges, editModal, id, prefix){
 function requestList(reqs){
   if(reqs.length===0) return `<div class="empty" style="padding:14px;">No requests yet.</div>`;
   const active = reqs.filter(r=>!DONE.includes(r.status)), done = reqs.filter(r=>DONE.includes(r.status));
-  return active.map(requestCard).join('') + done.map(requestCard).join('');
+  return `<div class="card-grid">${active.map(requestCard).join('')}</div><div class="row-list">${done.map(requestCard).join('')}</div>`;
 }
 function requestsSection(reqs, kind, id){
   return `<div class="section-card"><div class="section-head"><div class="section-name"><div class="icn">${icon('clip')}</div><h3>Requests</h3></div>${countPill(completedCount(kind, id))}</div>${requestList(reqs)}</div>`;
@@ -1004,31 +1032,31 @@ function clientDetail(){
   const c = byId(state.clients, state.routeId); if(!c) return `<div class="empty">Client not found.</div>`;
   const reqs = state.requests.filter(r=>r.client_id===c.id);
   return hero(c.name, statusBadgePlain(c.status) + (c.is_mashilach ? `<span class="badge plain badge-white">Mashilach</span>` : ''), 'editClient', c.id)
-    + section('user', 'Contact Information', fieldRow('user','Name',esc(c.name)) + fieldRow('phone','Phone',telLink(c.phone)), 'editClient', c.id)
+    + `<div class="profile-grid">` + section('user', 'Contact Information', fieldRow('user','Name',esc(c.name)) + fieldRow('phone','Phone',telLink(c.phone)), 'editClient', c.id)
     + section('pin', 'Address', fieldRow('pin','Address',mapLink(c.address)) + fieldRow('info','Address instructions',esc(c.note||'')), 'editClient', c.id)
     + (c.private_note ? section('note', 'Note', `<div class="fval" style="white-space:pre-line;">${esc(c.private_note)}</div>`, 'editClient', c.id) : '')
-    + requestsSection(reqs, 'client', c.id) + recordMeta(c);
+    + `</div>` + requestsSection(reqs, 'client', c.id) + recordMeta(c);
 }
 function volunteerDetail(){
   const v = byId(state.volunteers, state.routeId); if(!v) return `<div class="empty">Volunteer not found.</div>`;
   const reqs = state.requests.filter(r=>r.volunteer_id===v.id);
   const rd = volunteerReadiness(v);
   return hero(v.name, statusBadgePlain(v.status) + `<span class="badge plain badge-white">${READY_LABEL[rd]}</span>`, 'editVolunteer', v.id, `<span class="dot ${rd}"></span>`)
-    + section('user', 'Contact Information', fieldRow('user','Name',esc(v.name)) + fieldRow('phone','Phone',telLink(v.phone)), 'editVolunteer', v.id)
+    + `<div class="profile-grid">` + section('user', 'Contact Information', fieldRow('user','Name',esc(v.name)) + fieldRow('phone','Phone',telLink(v.phone)), 'editVolunteer', v.id)
     + section('pin', 'Address', fieldRow('pin','Address',mapLink(v.address)) + fieldRow('info','Address instructions',esc(v.note||'')), 'editVolunteer', v.id)
     + section('wash', 'Washing', fieldRow('calendar','Available days',esc(daysLabel(v))) + fieldRow('bag','Bag capacity', v.bag_capacity ? esc(capacityLabel(v.bag_capacity)) : '')
         + fieldRow('wash','Wash frequency',esc(WASH_FREQ[v.wash_frequency]||''))
         + (v.status==='temporary_inactive' ? fieldRow('info','Away', `${esc(v.temp_inactive_from||'')} – ${esc(v.temp_inactive_until||'')}`) : ''), 'editVolunteer', v.id)
     + (v.private_note ? section('note', 'Note', `<div class="fval" style="white-space:pre-line;">${esc(v.private_note)}</div>`, 'editVolunteer', v.id) : '')
-    + requestsSection(reqs, 'volunteer', v.id) + recordMeta(v);
+    + `</div>` + requestsSection(reqs, 'volunteer', v.id) + recordMeta(v);
 }
 function driverDetail(){
   const d = byId(state.drivers, state.routeId); if(!d) return `<div class="empty">Driver not found.</div>`;
   const reqs = state.requests.filter(r=>r.pickup_driver_id===d.id || r.return_driver_id===d.id);
   return hero(d.name, statusBadgePlain(d.status) + (d.contact_sms ? `<span class="badge plain badge-white">SMS</span>` : '') + (d.contact_whatsapp ? `<span class="badge plain badge-white">WhatsApp</span>` : ''), 'editDriver', d.id)
-    + section('user', 'Contact Information', fieldRow('user','Name',esc(d.name)) + fieldRow('phone','Phone',telLink(d.phone)) + fieldRow('mail','Email', d.email ? `<a href="mailto:${esc(d.email)}">${esc(d.email)}</a>` : '') + fieldRow('pin','Address',mapLink(d.address)), 'editDriver', d.id)
+    + `<div class="profile-grid">` + section('user', 'Contact Information', fieldRow('user','Name',esc(d.name)) + fieldRow('phone','Phone',telLink(d.phone)) + fieldRow('mail','Email', d.email ? `<a href="mailto:${esc(d.email)}">${esc(d.email)}</a>` : '') + fieldRow('pin','Address',mapLink(d.address)), 'editDriver', d.id)
     + (d.private_note ? section('note', 'Note', `<div class="fval" style="white-space:pre-line;">${esc(d.private_note)}</div>`, 'editDriver', d.id) : '')
-    + requestsSection(reqs, 'driver', d.id) + recordMeta(d);
+    + `</div>` + requestsSection(reqs, 'driver', d.id) + recordMeta(d);
 }
 
 /* ============================= Recurring requests ============================= */
@@ -1115,7 +1143,7 @@ function recurring(){
         : `<div class="empty" style="padding:14px;">&mdash;</div>`}
     </div>
     <div class="date-group-label">All recurring requests</div>
-    ${state.recurring.length ? state.recurring.slice().sort((a,b)=> (b.active - a.active) || ((byId(state.clients,a.client_id)?.name||'').localeCompare(byId(state.clients,b.client_id)?.name||''))).map(recurringCard).join('')
+    ${state.recurring.length ? `<div class="card-grid">${state.recurring.slice().sort((a,b)=> (b.active - a.active) || ((byId(state.clients,a.client_id)?.name||'').localeCompare(byId(state.clients,b.client_id)?.name||''))).map(recurringCard).join('')}</div>`
       : `<div class="empty">${icon('repeat')}<div>No recurring requests yet</div></div>`}`;
 }
 
