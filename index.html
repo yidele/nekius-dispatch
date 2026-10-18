@@ -217,6 +217,9 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
   .list-card:hover,.req-row:hover{border-color:var(--primary);box-shadow:var(--shadow);}
 }
 @media (min-width: 1500px){ .card-grid{grid-template-columns:repeat(auto-fill,minmax(400px,1fr));} }
+.day-block{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:10px;}
+.day-name{font-family:var(--font-display);font-weight:700;font-size:14px;color:var(--primary-dark);}
+.day-block .req-actions .btn{flex:1 1 130px;}
 .meta{font-size:11.5px;color:var(--ink-faint);text-align:center;margin:18px 0 4px;line-height:1.7;}
 .person-box.faded{padding:5px 11px;font-size:12px;opacity:.75;}
 .person-box.faded .role{font-size:10px;}
@@ -1089,16 +1092,33 @@ function describeRepeat(t){
 }
 function overrideFor(t, day){ return state.overrides.find(o=>o.recurring_id===t.id && o.run_date===ymd(day)); }
 // who is set for one date: the one-time change if there is one, otherwise the usual person
-function effectiveFor(t, day, field){ const o = overrideFor(t, day); return o && field in (o.changes||{}) ? o.changes[field] : t[field]; }
+function effectiveFor(t, day, field){
+  const o = overrideFor(t, day); if(o && field in (o.changes||{})) return o.changes[field];
+  const dp = (t.day_people||{})[localDay(day).getDay()]; if(dp && field in dp) return dp[field];
+  return t[field];
+}
+const RECURRING_PEOPLE = [['volunteer_id','Volunteer','volunteer','_showVol'], ['pickup_driver_id','Pickup driver','driver','_showPd'], ['return_driver_id','Return driver','driver','_showRd']];
+function isPerDay(t){ return Object.keys(t.day_people||{}).length > 0; }
 // the request already created from a recurring one for a given day (if any)
 function generatedFor(t, day){ return state.requests.find(r=>r.recurring_id===t.id && r.requested_for && localDay(r.requested_for).getTime()===day.getTime()); }
 function recurringCard(t){
   const client = byId(state.clients, t.client_id), vol = byId(state.volunteers, t.volunteer_id);
   const pd = byId(state.drivers, t.pickup_driver_id), rd = byId(state.drivers, t.return_driver_id);
-  const assign = (field, label, primary) => `<button class="btn ${primary?'btn-primary':'btn-outline'}" data-action="assign-person" data-recurring="1" data-id="${t.id}" data-field="${field}">${icon(field==='volunteer_id'?'volunteer':'truck')} ${label}</button>`;
-  const box = (role, kind, p, field) => personBox(role, kind, p, {address: kind==='volunteer'}).replace('<span class="role">',
-    `<button class="box-x" title="Remove" data-action="unassign-recurring" data-id="${t.id}" data-field="${field}">${icon('x')}</button><span class="role">`);
-  const missing = [!vol && assign('volunteer_id','Assign Volunteer', true), !pd && assign('pickup_driver_id','Assign Pickup Driver'), !rd && assign('return_driver_id','Assign Return Driver')].filter(Boolean).join('');
+  const dayAttr = day => day == null ? '' : ` data-day="${day}"`;
+  const assign = (field, label, primary, day) => `<button class="btn ${primary?'btn-primary':'btn-outline'}" data-action="assign-person" data-recurring="1" data-id="${t.id}" data-field="${field}"${dayAttr(day)}>${icon(field==='volunteer_id'?'volunteer':'truck')} ${label}</button>`;
+  const box = (role, kind, p, field, day) => personBox(role, kind, p, {address: kind==='volunteer'}).replace('<span class="role">',
+    `<button class="box-x" title="Remove" data-action="unassign-recurring" data-id="${t.id}" data-field="${field}"${dayAttr(day)}>${icon('x')}</button><span class="role">`);
+  const perDay = isPerDay(t);
+  const missing = perDay ? '' : [!vol && assign('volunteer_id','Assign Volunteer', true), !pd && assign('pickup_driver_id','Assign Pickup Driver'), !rd && assign('return_driver_id','Assign Return Driver')].filter(Boolean).join('');
+  // different people on each weekday: one small block per day
+  const perDayBlocks = perDay ? (t.days||[]).slice().sort().map(day => {
+    const dp = (t.day_people||{})[day] || {};
+    const people = RECURRING_PEOPLE.map(([f, role, kind]) => [f, role, kind, byId(state[kind+'s'], dp[f])]);
+    return `<div class="day-block"><div class="day-name">${DAY_LONG[day]}</div>
+      ${people.filter(x=>x[3]).map(([f, role, kind, p]) => box(role, kind, p, f, day)).join('')}
+      ${people.some(x=>!x[3]) ? `<div class="req-actions" style="margin-top:8px;">${people.filter(x=>!x[3]).map(([f, role]) => assign(f, 'Assign ' + role, f==='volunteer_id', day)).join('')}</div>` : ''}
+    </div>`;
+  }).join('') : '';
   return `<div class="card req-card" style="border-left-color:${t.active ? 'var(--primary)' : 'var(--line)'};${t.active ? '' : 'opacity:.65;'}">
     <div class="req-head">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span class="req-id">${icon('repeat')} ${esc(describeRepeat(t))}</span><span class="sub">${fmtTime(t.time_of_day)}</span>${t.active ? '' : '<span class="tag gray">Paused</span>'}</div>
@@ -1110,9 +1130,9 @@ function recurringCard(t){
     ${client ? `<div class="req-line">${icon('client')} <span class="name-link" data-nav="client" data-id="${client.id}">${esc(client.name)}</span>${client.phone ? ` &middot; ${telLink(client.phone)}` : ''}</div>
       ${client.address ? `<div class="req-line">${icon('pin')} ${mapLink(client.address)}</div>` : ''}` : ''}
     <div class="req-line">${icon('bag')} ${bagsLabel(t.bags)} bag's</div>
-    ${vol ? box('Volunteer','volunteer',vol,'volunteer_id') : ''}
+    ${perDay ? perDayBlocks : `${vol ? box('Volunteer','volunteer',vol,'volunteer_id') : ''}
     ${pd ? box('Pickup driver','driver',pd,'pickup_driver_id') : ''}
-    ${rd ? box('Return driver','driver',rd,'return_driver_id') : ''}
+    ${rd ? box('Return driver','driver',rd,'return_driver_id') : ''}`}
     ${t.notes ? `<div class="private">${esc(t.notes)}</div>` : ''}
     ${missing || isEditor() ? `<div class="req-actions">${missing}${isEditor() ? `<button class="btn btn-outline" data-action="toggle-recurring-active" data-id="${t.id}">${t.active ? 'Pause' : 'Resume'}</button>` : ''}</div>` : ''}
   </div>`;
@@ -1306,9 +1326,10 @@ function statusToggleField(status){
 }
 
 /* ---------- Search-and-pick lists (clients, volunteers, drivers) ---------- */
+function kindOf(field){ return KIND_FOR_FIELD[field.split('__')[0]]; }
 const KIND_FOR_FIELD = { client_id:'client', volunteer_id:'volunteer', pickup_driver_id:'driver', return_driver_id:'driver' };
 function pickerResults(field){
-  const kind = KIND_FOR_FIELD[field];
+  const kind = kindOf(field);
   const q = state.pickerSearch[field] || '';
   let list = state[kind+'s'].filter(p => !['inactive','suspended'].includes(p.status) && matchesSearch(p, q));
   list = kind==='volunteer' ? sortPeople(list, 'volunteer', state.volSort, state.volDays) : list.slice().sort((a,b)=>a.name.localeCompare(b.name));
@@ -1333,12 +1354,12 @@ function pickerVolControls(){
     ${state.volDays.length || state.volSort!=='name' ? `<a class="clear-all" data-action="clear-vol-filters">Clear all</a>` : ''}</div>`;
 }
 function pickerSearchBox(field){
-  const kind = KIND_FOR_FIELD[field];
+  const kind = kindOf(field);
   return `<div class="search-box">${icon('search')}<input placeholder="Search ${kind}s by name, phone or address…" value="${esc(state.pickerSearch[field]||'')}" data-live="pickerSearch.${field}"></div>`;
 }
 // In a form: shows the chosen person with "Change", or a search box with results
 function inlinePicker(field){
-  const kind = KIND_FOR_FIELD[field];
+  const kind = kindOf(field);
   const sel = byId(state[kind+'s'], state.draft[field]);
   if(sel) return `<div class="picked"><div><b>${esc(sel.name)}</b><div class="sub">${esc(sel.address||sel.phone||'')}</div></div><a data-action="unpick" data-field="${field}">Change</a></div>`;
   return pickerSearchBox(field) + pickerResults(field);
@@ -1439,7 +1460,7 @@ function occurrenceModal(){
 function recurringFormModal(){
   const t = state.modal.id ? byId(state.recurring, state.modal.id) : null;
   if(state.draft._formKind !== 'recurring'){
-    state.draft = t ? {_formKind:'recurring', ...t, time_of_day:(t.time_of_day||'10:00').slice(0,5), bags:String(t.bags)}
+    state.draft = t ? {_formKind:'recurring', ...t, time_of_day:(t.time_of_day||'10:00').slice(0,5), bags:String(t.bags), ...perDayDraft(t)}
                     : {_formKind:'recurring', days:[], time_of_day:'10:00', bags:'1', active:true, repeat:'weekly', interval_weeks:1, start_date: ymd(new Date()), month_weeks:[]};
   }
   const d = state.draft;
@@ -1458,14 +1479,30 @@ function recurringFormModal(){
       : `<label>Starting</label><input type="date" data-bind="start_date" value="${esc(d.start_date||'')}">`}
     <label>Time</label><input type="time" data-bind="time_of_day" value="${esc(d.time_of_day||'')}">
     <label>Bags</label><div class="chip-row">${bagChips()}</div>
-    <label>Volunteer</label>${d.volunteer_id || d._showVol ? optional('volunteer_id') : `<div class="btn btn-outline btn-sm" data-action="set-draft" data-field="_showVol" data-value="1">Choose a volunteer</div>`}
-    <label>Pickup driver</label>${d.pickup_driver_id || d._showPd ? optional('pickup_driver_id') : `<div class="btn btn-outline btn-sm" data-action="set-draft" data-field="_showPd" data-value="1">Choose a pickup driver</div>`}
-    <label>Return driver</label>${d.return_driver_id || d._showRd ? optional('return_driver_id') : `<div class="btn btn-outline btn-sm" data-action="set-draft" data-field="_showRd" data-value="1">Choose a return driver</div>`}
+    ${(d.days||[]).length > 1 ? `<label>People</label><div class="chip-row">
+      <div class="chip ${d._perDay ? '' : 'active'}" data-action="set-draft" data-field="_perDay" data-value="">Same people every day</div>
+      <div class="chip ${d._perDay ? 'active' : ''}" data-action="set-draft" data-field="_perDay" data-value="1">Different people on each day</div>
+    </div>` : ''}
+    ${(d._perDay && (d.days||[]).length > 1)
+      ? (d.days||[]).slice().sort().map(day => `<div class="day-block"><div class="day-name">${DAY_LONG[day]}</div>${peoplePickers(d, '__' + day, optional)}</div>`).join('')
+      : peoplePickers(d, '', optional)}
     <label>Note</label><textarea data-bind="notes" rows="2">${esc(d.notes||'')}</textarea>
     <div class="btn-row" style="margin-top:18px;">
       <button class="btn btn-outline" data-action="close-modal">Cancel</button>
       <button class="btn btn-primary" data-action="save-recurring">Save</button>
     </div>`;
+}
+function peoplePickers(d, suffix, optional){
+  const choose = {volunteer_id:'Choose a volunteer', pickup_driver_id:'Choose a pickup driver', return_driver_id:'Choose a return driver'};
+  return RECURRING_PEOPLE.map(([f, role, , show]) => `<label>${role}</label>${d[f+suffix] || d[show+suffix] ? optional(f+suffix)
+    : `<div class="btn btn-outline btn-sm" data-action="set-draft" data-field="${show+suffix}" data-value="1">${choose[f]}</div>`}`).join('');
+}
+// editing: unpack the per-day people into form fields like "volunteer_id__3"
+function perDayDraft(t){
+  if(!isPerDay(t)) return {};
+  const out = {_perDay:'1'};
+  for(const [day, dp] of Object.entries(t.day_people)) for(const [f] of RECURRING_PEOPLE) if(dp[f]) out[`${f}__${day}`] = dp[f];
+  return out;
 }
 // The app's own address (works wherever it's hosted)
 function appUrl(){ return /^https?:/.test(location.protocol) ? location.origin + location.pathname : 'https://yidele.github.io/nekius-dispatch/'; }
@@ -1603,12 +1640,12 @@ function initEvents(){
         state.pickerSearch[field] = '';
         if(state.modal?.type==='assignPerson'){
           if(state.modal.date){ const m = state.modal; state.modal = state.modalStack.pop()?.modal || null; state.modalStack = []; await setOverride(m.id, m.date, {[field]: value}); }
-          else state.modal.recurring ? await assignToRecurring(state.modal.id, field, value) : await assignToRequest(state.modal.id, field, value);
+          else state.modal.recurring ? await assignToRecurring(state.modal.id, field, value, state.modal.dayKey) : await assignToRequest(state.modal.id, field, value);
         }
         else { state.draft[field] = value; render(); }
         break;
       }
-      case 'unpick': { const f = actionEl.getAttribute('data-field'); state.draft[f] = null; state.pickerSearch[f] = ''; if(f==='volunteer_id') state.draft._showVol = '1'; render(); break; }
+      case 'unpick': { const f = actionEl.getAttribute('data-field'); state.draft[f] = null; state.pickerSearch[f] = ''; const [base, sfx] = f.split('__'); const show = {volunteer_id:'_showVol', pickup_driver_id:'_showPd', return_driver_id:'_showRd'}[base]; if(show) state.draft[show + (sfx ? '__' + sfx : '')] = '1'; render(); break; }
       case 'clear-field': state.draft[actionEl.getAttribute('data-field')] = null; render(); break;
       case 'assign-person': {
         if(actionEl.getAttribute('data-occurrence')){
@@ -1622,9 +1659,10 @@ function initEvents(){
         }
         const isRec = !!actionEl.getAttribute('data-recurring');
         const r = byId(isRec ? state.recurring : state.requests, Number(actionEl.getAttribute('data-id')));
-        state.modal = {type:'assignPerson', id:r.id, field: actionEl.getAttribute('data-field'), recurring: isRec};
+        const dayKey = actionEl.getAttribute('data-day');
+        state.modal = {type:'assignPerson', id:r.id, field: actionEl.getAttribute('data-field'), recurring: isRec, dayKey};
         state.modalStack = []; state.pickerSearch = {}; state.draft = {};
-        state.volDays = isRec ? (r.days||[]).filter(d=>d<6) : defaultVolDays(r.requested_for);
+        state.volDays = isRec ? (dayKey != null ? [Number(dayKey)] : (r.days||[]).filter(d=>d<6)) : defaultVolDays(r.requested_for);
         render(); break;
       }
       case 'advance': {
@@ -1667,7 +1705,9 @@ function initEvents(){
       case 'unassign-recurring': {
         const id = Number(actionEl.getAttribute('data-id')), field = actionEl.getAttribute('data-field');
         if(!confirm('Remove this person from the recurring request?')) break;
-        if(await updateRecurring(id, {[field]: null})) showToast('Removed');
+        const dayKey = actionEl.getAttribute('data-day'), t = byId(state.recurring, id);
+        const patch = dayKey != null ? {day_people: {...t.day_people, [dayKey]: {...(t.day_people[dayKey]||{}), [field]: null}}} : {[field]: null};
+        if(await updateRecurring(id, patch)) showToast('Removed');
         break;
       }
       case 'toggle-recurring-active': {
@@ -1845,8 +1885,12 @@ async function setOverride(id, date, changes, resetField, skip){
   state.overrides = state.overrides.filter(o=>!(o.recurring_id===id && o.run_date===date)).concat(data);
   showToast(skip===true ? 'This date is skipped' : skip===false ? 'This date is back on' : 'Saved for this date only');
 }
-async function assignToRecurring(id, field, value){
-  const saved = await updateRecurring(id, {[field]: value});
+async function assignToRecurring(id, field, value, dayKey){
+  const t = byId(state.recurring, id);
+  const patch = dayKey != null
+    ? {day_people: {...(t.day_people||{}), [dayKey]: {...((t.day_people||{})[dayKey]||{}), [field]: value}}}
+    : {[field]: value};
+  const saved = await updateRecurring(id, patch);
   if(!saved) return;
   state.modal = null; state.draft = {}; state.modalStack = []; state.pickerSearch = {};
   showToast('Saved — new requests will include this');
@@ -1856,9 +1900,14 @@ async function saveRecurring(){
   if(!d.client_id){ showToast('Select a client'); return; }
   if(!(d.days||[]).length){ showToast('Choose at least one day'); return; }
   if(d.repeat==='monthly' && !(d.month_weeks||[]).length){ showToast('Choose which week of the month'); return; }
+  const perDay = d._perDay && d.days.length > 1;
+  const day_people = {};
+  if(perDay) for(const day of d.days){ day_people[day] = {}; for(const [f] of RECURRING_PEOPLE) day_people[day][f] = d[`${f}__${day}`] || null; }
   const payload = {
     client_id: d.client_id, days: d.days, time_of_day: d.time_of_day || '10:00', bags: Number(d.bags)||1,
-    volunteer_id: d.volunteer_id||null, pickup_driver_id: d.pickup_driver_id||null, return_driver_id: d.return_driver_id||null,
+    // with different people per day, the usual people are left empty
+    volunteer_id: perDay ? null : d.volunteer_id||null, pickup_driver_id: perDay ? null : d.pickup_driver_id||null, return_driver_id: perDay ? null : d.return_driver_id||null,
+    day_people,
     notes: (d.notes||'').trim() || null,
     repeat: d.repeat || 'weekly', interval_weeks: Number(d.interval_weeks)||1, month_weeks: d.month_weeks || [],
     start_date: d.start_date || ymd(new Date()),
@@ -1923,7 +1972,7 @@ async function savePerson(kind, id){
       const m = prev.modal; state.modal = state.modalStack.pop()?.modal || null; state.modalStack = []; state.draft = {};
       await setOverride(m.id, m.date, {[prev.field]: saved.id}); return;
     }
-    if(prev.modal.type==='assignPerson'){ prev.modal.recurring ? await assignToRecurring(prev.modal.id, prev.field, saved.id) : await assignToRequest(prev.modal.id, prev.field, saved.id); return; }
+    if(prev.modal.type==='assignPerson'){ prev.modal.recurring ? await assignToRecurring(prev.modal.id, prev.field, saved.id, prev.modal.dayKey) : await assignToRequest(prev.modal.id, prev.field, saved.id); return; }
     state.modal = prev.modal; state.draft = {...prev.draft, [prev.field]: saved.id};
     state.pickerSearch[prev.field] = ''; render(); return;
   }

@@ -454,3 +454,8 @@ begin
   return wk % rr.interval_weeks = 0;
 end;
 $$;
+
+-- 2026-10-18: different people on each weekday of a recurring request
+-- day_people = {"0": {"volunteer_id": "..."}, "3": {...}}; empty = the same people every day.
+-- generate_recurring_requests() picks: one-time change for the date > that weekday's people > the usual people.
+alter table recurring_requests add column if not exists day_people jsonb not null default '{}';
