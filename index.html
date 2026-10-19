@@ -342,8 +342,8 @@ const state = {
   authForm: {},           // what's typed on Log in / Sign up, so a re-render doesn't wipe it
   clients: [], volunteers: [], drivers: [], requests: [], profiles: [], invites: [], recurring: [], overrides: [],
   settings: { mashilach_address:'', mashilach_note:'', post_message_template:{before:'',between:' to ',after:''},
-    driver_message_pickup_template:'Laundry pickup — Request #{request_id}\n\nPick up from: {client_address}\n{client_note}\nName: {client_name}\nBags: {bags}\n\nDeliver to: {volunteer_name}\n{volunteer_address}\n{volunteer_note}',
-    driver_message_return_template:'Laundry return — Request #{request_id}\n\nPick up from: {volunteer_name}\n{volunteer_address}\n{volunteer_note}\n\nDeliver to: {client_address}\n{client_note}\nName: {client_name}' },
+    driver_message_pickup_template:'Laundry pickup — Request #{request_id}\n\nPick up from:\n{client_address}\n{client_note}\nName: {client_name}\nBags: {bags}\n\n\nDeliver to:\n{volunteer_name}\n{volunteer_address}\n{volunteer_note}',
+    driver_message_return_template:'Laundry return — Request #{request_id}\n\nPick up from:\n{volunteer_name}\n{volunteer_address}\n{volunteer_note}\n\n\nDeliver to:\n{client_address}\n{client_note}\nName: {client_name}' },
   loading: true,
   modalStack: [],         // modals underneath the current one (e.g. New Request under Add Client)
   pickerSearch: {},       // search text per picker field
