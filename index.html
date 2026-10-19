@@ -348,7 +348,7 @@ const state = {
   modalStack: [],         // modals underneath the current one (e.g. New Request under Add Client)
   pickerSearch: {},       // search text per picker field
   expanded: {},           // finished requests opened from their one-line view
-  volSort: 'name', volDays: defaultVolDays(),
+  volSort: 'rotation', volDays: [],
   navStack: [],           // where to go back to from a profile page
 };
 
@@ -871,6 +871,10 @@ function statusBadgeInteractive(r){
 }
 
 /* ============================= Lists, search and filters ============================= */
+// a volunteer "took a call" when they were put on a request that wasn't cancelled or left uncovered
+function volunteerCalls(id){ return state.requests.filter(r=>r.volunteer_id===id && !['cancelled','not_covered'].includes(r.status)); }
+function lastCall(id){ return Math.max(0, ...volunteerCalls(id).map(r=> new Date(r.volunteer_assigned_at || r.requested_for || r.created_at).getTime())); }
+function callCount(id){ return volunteerCalls(id).length; }
 function completedCount(kind, id){
   if(kind==='driver') return state.requests.filter(r=>r.status==='completed' && (r.pickup_driver_id===id || r.return_driver_id===id)).length;
   return state.requests.filter(r=>r.status==='completed' && r[kind+'_id']===id).length;
@@ -880,8 +884,9 @@ function matchesSearch(p, q){
   if(!q) return true; q = q.toLowerCase();
   return [p.name, p.phone, p.address].some(x => (x||'').toLowerCase().includes(q));
 }
+function lastCallLabel(id){ const t = lastCall(id); return t ? 'Last call: ' + new Date(t).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : 'No calls yet'; }
 function volunteerSub(v){
-  return [v.phone, daysLabel(v) && `Available: ${daysLabel(v)}`, v.bag_capacity && capacityLabel(v.bag_capacity)].filter(Boolean).join(' · ');
+  return [lastCallLabel(v.id), v.phone, daysLabel(v) && `Available: ${daysLabel(v)}`, v.bag_capacity && capacityLabel(v.bag_capacity)].filter(Boolean).join(' · ');
 }
 // readiness: green = ready, amber = due, gray = no completed washes yet
 const READY_LABEL = { green:'Ready', amber:'Due', gray:'New' };
@@ -903,7 +908,7 @@ const FILTERS = {
       { key:'freq', label:'Wash frequency', options:Object.entries(WASH_FREQ), test:(x,v)=>v.includes(x.wash_frequency) },
       { key:'ready', label:'Readiness', options:Object.entries(READY_LABEL), test:(x,v)=>v.includes(volunteerReadiness(x)) },
     ],
-    sorts: { name:'Name (A–Z)', readiness:'Due to wash first', capacity:'Most bags first', frequency:'Washes most often first', most:'Most completed', newest:'Newest first' },
+    sorts: { rotation:'Longest since last call', name:'Name (A–Z)', readiness:'Due to wash first', capacity:'Most bags first', frequency:'Washes most often first', most:'Most completed', newest:'Newest first' },
   },
   drivers: {
     groups: [
@@ -913,10 +918,10 @@ const FILTERS = {
     sorts: { name:'Name (A–Z)', most:'Most completed', newest:'Newest first' },
   },
 };
-function defaultFilters(list){ return { status:['active'], sort:'name', ...(list==='volunteers' ? {days: defaultVolDays()} : {}) }; }
+function defaultFilters(list){ return { status:['active'], sort: list==='volunteers' ? 'rotation' : 'name', ...(list==='volunteers' ? {days: []} : {}) }; }
 function filterCount(list){
   const f = state.filters[list], d = defaultFilters(list);
-  return FILTERS[list].groups.filter(g=>JSON.stringify((f[g.key]||[]).slice().sort()) !== JSON.stringify((d[g.key]||[]).slice().sort())).length + (f.sort !== 'name' ? 1 : 0);
+  return FILTERS[list].groups.filter(g=>JSON.stringify((f[g.key]||[]).slice().sort()) !== JSON.stringify((d[g.key]||[]).slice().sort())).length + (f.sort !== d.sort ? 1 : 0);
 }
 function sortPeople(list, kind, sort, days){
   const rank = {amber:0, gray:1, green:2};
@@ -930,6 +935,8 @@ function sortPeople(list, kind, sort, days){
     frequency: (a,b) => (freq(b) - freq(a)) || byName(a,b),
     most: (a,b) => (completedCount(kind,b.id) - completedCount(kind,a.id)) || byName(a,b),
     newest: (a,b) => new Date(b.created_at) - new Date(a.created_at),
+    // never had a call (fewest calls first), then whoever's last call was longest ago; the latest one goes to the bottom
+    rotation: (a,b) => (lastCall(a.id) - lastCall(b.id)) || (callCount(a.id) - callCount(b.id)) || byName(a,b),
   }[sort] || byName;
   // volunteers free on more of the chosen days come first; the chosen sort orders the rest
   const free = v => (days||[]).filter(d=>availableOn(v,d)).length;
@@ -984,6 +991,7 @@ function volunteers(){
     const match = daysLabel(v, days);
     return listCard('volunteer', v, `<span class="dot ${volunteerReadiness(v)}"></span>`, [
       (days.length && match) ? `<span class="tag">Available ${days.length===1 ? DAY_LONG[days[0]] : match}</span>` : '',
+      `${icon('history')} ${lastCallLabel(v.id)}`,
       v.phone && `${icon('phone')} ${telLink(v.phone)}`, v.address && `${icon('pin')} ${mapLink(v.address)}`,
       [daysLabel(v) && `${icon('calendar')} ${daysLabel(v)}`, v.bag_capacity && `${icon('bag')} ${capacityLabel(v.bag_capacity)}`].filter(Boolean).join(' &nbsp; '),
       v.status!=='active' && statusTag(v.status)]);
@@ -1353,7 +1361,7 @@ function pickerVolControls(){
     <div class="chip-row">${WORK_DAYS.map(i=>`<div class="chip ${state.volDays.includes(i)?'active':''}" data-action="toggle-vol-day" data-day="${i}">${DAY_SHORT[i]}${i===today?' &middot; today':''}</div>`).join('')}</div>
     <label>Sort by</label>
     <div class="row-between"><select data-setstate="volSort" style="max-width:280px;">${Object.entries(FILTERS.volunteers.sorts).map(([k,l])=>`<option value="${k}" ${state.volSort===k?'selected':''}>${l}</option>`).join('')}</select>
-    ${state.volDays.length || state.volSort!=='name' ? `<a class="clear-all" data-action="clear-vol-filters">Clear all</a>` : ''}</div>`;
+    ${state.volDays.length || state.volSort!=='rotation' ? `<a class="clear-all" data-action="clear-vol-filters">Clear all</a>` : ''}</div>`;
 }
 function pickerSearchBox(field){
   const kind = kindOf(field);
@@ -1603,7 +1611,7 @@ function initEvents(){
       case 'open-modal':
         state.modal = {type: actionEl.getAttribute('data-modal'), id: actionEl.getAttribute('data-id'), date: actionEl.getAttribute('data-date')};
         state.draft = {}; state.modalStack = []; state.pickerSearch = {}; state.menuOpen = false;
-        if(state.modal.type==='newRequest'){ state.volDays = defaultVolDays(); }
+        if(state.modal.type==='newRequest'){ state.volDays = []; state.volSort = 'rotation'; }
         render(); break;
       case 'close-modal': closeModal(); break;
       case 'toggle-vol-day': {
@@ -1612,7 +1620,7 @@ function initEvents(){
         render(); break;
       }
       case 'clear-vol-filters':
-        state.volDays = []; state.volSort = 'name'; state.draft.volSearch = ''; state.pickerSearch.volunteer_id = '';
+        state.volDays = []; state.volSort = 'rotation'; state.draft.volSearch = ''; state.pickerSearch.volunteer_id = '';
         render(); break;
       case 'set-top-period': state.top[actionEl.getAttribute('data-kind')].period = actionEl.getAttribute('data-period'); render(); break;
       case 'go-dispatch': state.route = 'dispatch'; if(actionEl.getAttribute('data-tab')) state.dispatchTab = actionEl.getAttribute('data-tab'); state.navStack = []; render(); window.scrollTo(0,0); break;
@@ -1656,7 +1664,7 @@ function initEvents(){
           state.modalStack = [{modal: state.modal, draft: state.draft, field: actionEl.getAttribute('data-field')}];
           state.modal = {type:'assignPerson', id:t.id, field: actionEl.getAttribute('data-field'), recurring:true, date: actionEl.getAttribute('data-date')};
           state.pickerSearch = {}; state.draft = {};
-          state.volDays = [new Date(state.modal.date + 'T00:00').getDay()].filter(d=>d<6);
+          state.volDays = []; state.volSort = 'rotation';
           render(); break;
         }
         const isRec = !!actionEl.getAttribute('data-recurring');
@@ -1664,7 +1672,7 @@ function initEvents(){
         const dayKey = actionEl.getAttribute('data-day');
         state.modal = {type:'assignPerson', id:r.id, field: actionEl.getAttribute('data-field'), recurring: isRec, dayKey};
         state.modalStack = []; state.pickerSearch = {}; state.draft = {};
-        state.volDays = isRec ? (dayKey != null ? [Number(dayKey)] : (r.days||[]).filter(d=>d<6)) : defaultVolDays(r.requested_for);
+        state.volDays = []; state.volSort = 'rotation';
         render(); break;
       }
       case 'advance': {
@@ -1840,7 +1848,7 @@ function initEvents(){
     if(bindEl){
       state.draft[bindEl.getAttribute('data-bind')] = bindEl.value;
       // volunteers available on the requested day float to the top of the picker
-      if(bindEl.getAttribute('data-bind')==='requested_for' && bindEl.value){ state.volDays = defaultVolDays(bindEl.value); render(); }
+
     }
   });
 }
