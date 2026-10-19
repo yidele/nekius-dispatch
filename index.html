@@ -56,8 +56,8 @@ button,input,select,textarea{font-family:var(--font-body);}
 .hamburger-panel{position:fixed;top:0;left:0;bottom:0;width:78%;max-width:300px;background:var(--surface);box-shadow:var(--shadow);display:flex;flex-direction:column;animation:slideIn .18s ease;}
 @keyframes slideIn{from{transform:translateX(-100%);}to{transform:none;}}
 .drawer-head{padding:20px 18px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;}
-.drawer-head .basket{font-size:26px;}
-.drawer-head .brand-name{font-family:var(--font-display);font-size:17px;font-weight:700;color:var(--primary-dark);}
+.drawer-head .brand-logo{height:34px;width:auto;}
+.drawer-head .brand-name{font-family:var(--font-display);font-size:16px;font-weight:600;color:var(--ink-soft);}
 .drawer-nav{padding:8px;flex:1;overflow-y:auto;}
 .nav-item{display:flex;align-items:center;gap:14px;padding:12px;border-radius:10px;cursor:pointer;color:var(--ink-soft);font-weight:500;}
 .nav-item svg{flex-shrink:0;opacity:.85;}
@@ -627,7 +627,7 @@ function navPanel(){
   ];
   if(state.profile?.role === 'editor') items.push(['settings','Settings','settings']);
   const current = {client:'clients', volunteer:'volunteers', driver:'drivers'}[state.route] || state.route;
-  return `<div class="drawer-head"><span class="basket">&#129530;</span><div class="brand-name">Kvisa Dispatch</div></div>
+  return `<div class="drawer-head"><img class="brand-logo" src="logo-mark.png" alt="Kvisa"><div class="brand-name">Dispatch</div></div>
     <div class="drawer-nav">
       ${items.map(([r,l,ic])=>`<div class="nav-item ${current===r?'active':''}" data-nav="${r}">${icon(ic)}<span>${l}</span></div>`).join('')}
       <hr class="sep">
@@ -640,6 +640,7 @@ function authScreen(){
   const isLogin = state.authMode === 'login';
   return `<div class="header"><span class="title">Kvisa Dispatch</span></div>
   <div class="main" style="max-width:420px;">
+    <div style="text-align:center;margin:10px 0 18px;"><img src="logo.png" alt="Kvisa" style="width:220px;max-width:70%;"></div>
     <div class="section-title">${isLogin?'Log in':'Sign up'}</div>
     <div class="card">
       ${!isLogin ? `<div class="field"><label>Your name</label><input id="auth-name" autocomplete="name" value="${esc(state.authForm['auth-name']||'')}"></div>` : ''}
