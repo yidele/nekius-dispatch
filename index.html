@@ -360,8 +360,8 @@ const state = {
   authForm: {},           // what's typed on Log in / Sign up, so a re-render doesn't wipe it
   clients: [], volunteers: [], drivers: [], requests: [], profiles: [], invites: [], recurring: [], overrides: [],
   settings: { mashilach_address:'', mashilach_note:'', post_message_template:{before:'',between:' to ',after:''},
-    driver_message_pickup_template:'Laundry pickup — Request #{request_id}\n\nPick up from:\n{client_address}\n{client_note}\nName: {client_name}\nBags: {bags}\n\n\nDeliver to:\n{volunteer_name}\n{volunteer_address}\n{volunteer_note}',
-    driver_message_return_template:'Laundry return — Request #{request_id}\n\nPick up from:\n{volunteer_name}\n{volunteer_address}\n{volunteer_note}\n\n\nDeliver to:\n{client_address}\n{client_note}\nName: {client_name}' },
+    driver_message_pickup_template:'Laundry pickup — Request #{request_id}\n\nPick up from:\n{client_address}\n{client_map}\n{client_note}\nName: {client_name}\nBags: {bags}\n\n\nDeliver to:\n{volunteer_name}\n{volunteer_address}\n{volunteer_map}\n{volunteer_note}',
+    driver_message_return_template:'Laundry return — Request #{request_id}\n\nPick up from:\n{volunteer_name}\n{volunteer_address}\n{volunteer_map}\n{volunteer_note}\n\n\nDeliver to:\n{client_address}\n{client_map}\n{client_note}\nName: {client_name}' },
   loading: true,
   modalStack: [],         // modals underneath the current one (e.g. New Request under Add Client)
   pickerSearch: {},       // search text per picker field
@@ -506,7 +506,9 @@ function driverMessage(req, leg){
     request_id: req.id, driver_name: driver?.name||'',
     // the client's name and bag count only matter to drivers for Mashilach clients; for families the address is enough
     client_name: client?.is_mashilach ? client.name : '', client_address: client?.address||'', client_phone: client?.phone||'', client_note: client?.note||'',
-    volunteer_name: vol?.name||'', volunteer_address: vol?.address||'', volunteer_phone: vol?.phone||'', volunteer_note: vol?.note||'',
+    // tapping the link opens the address in the driver's maps app
+    client_map: mapUrl(client?.address),
+    volunteer_name: vol?.name||'', volunteer_address: vol?.address||'', volunteer_phone: vol?.phone||'', volunteer_note: vol?.note||'', volunteer_map: mapUrl(vol?.address),
     // the washer packages freely on the return leg, so no bag count there
     bags: leg==='return' || !client?.is_mashilach ? '' : bagsLabel(req.bags), requested_for: fmtDateTime(req.requested_for)
   });
@@ -1475,7 +1477,7 @@ function settings(){
     ${settingsSection('drivermsg','Driver Message templates', `
       <div class="field"><label>Pickup leg template</label><textarea id="set-dm-pickup" rows="4">${esc(s.driver_message_pickup_template||'')}</textarea></div>
       <div class="field"><label>Return leg template</label><textarea id="set-dm-return" rows="4">${esc(s.driver_message_return_template||'')}</textarea></div>
-      <div class="hint">{request_id} {driver_name} {client_name} {client_address} {client_phone} {client_note} {volunteer_name} {volunteer_address} {volunteer_phone} {volunteer_note} {bags} {requested_for}</div>
+      <div class="hint">{request_id} {driver_name} {client_name} {client_address} {client_map} {client_phone} {client_note} {volunteer_name} {volunteer_address} {volunteer_map} {volunteer_phone} {volunteer_note} {bags} {requested_for}</div>
       <div class="btn btn-primary btn-sm" style="margin-top:10px;" data-action="save-drivermsg-settings">Save</div>
     `)}
     ${settingsSection('users','Dispatcher access', `
