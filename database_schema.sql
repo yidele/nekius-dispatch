@@ -459,3 +459,10 @@ $$;
 -- day_people = {"0": {"volunteer_id": "..."}, "3": {...}}; empty = the same people every day.
 -- generate_recurring_requests() picks: one-time change for the date > that weekday's people > the usual people.
 alter table recurring_requests add column if not exists day_people jsonb not null default '{}';
+
+-- ============================================================
+-- Recurring requests now appear at 7:00 AM (New York) on their own day,
+-- instead of from the day before. Same function, only the dates changed:
+--   if local time < 07:00 → create nothing; otherwise create only today's.
+-- (applied as migration recurring_opens_7am_same_day)
+-- ============================================================

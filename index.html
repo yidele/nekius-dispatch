@@ -537,7 +537,7 @@ function volunteerReadiness(vol){
 
 /* ============================= Supabase data ============================= */
 async function loadAll(){
-  // make sure today's and tomorrow's recurring requests exist (the database also does this every hour)
+  // make sure today's recurring requests exist once it's 7 AM (the database also does this every hour)
   try{ await sb.rpc('generate_recurring_requests'); }catch(_){}
   const [c,v,d,r,s,p,inv,rec,ov] = await Promise.all([
     sb.from('clients').select('*').order('name'),
@@ -820,7 +820,8 @@ function addedOn(r, iso){
 }
 function telLink(phone){ return phone ? `<a href="tel:${esc(phone.replace(/[^\d+]/g,''))}">${esc(phone)}</a>` : ''; }
 // opens the device's maps app (Google Maps link works on iPhone, iPad and Android)
-function mapUrl(address){ return address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : ''; }
+// kept short so it reads well in a text: words joined with + (commas dropped)
+function mapUrl(address){ return address ? 'https://maps.google.com/?q=' + address.replace(/,/g,' ').trim().split(/\s+/).map(encodeURIComponent).join('+') : ''; }
 function mapLink(address){ return address ? `<a href="${mapUrl(address)}" target="_blank" rel="noopener">${esc(address)}</a>` : ''; }
 
 /* ============================= Address form ============================= */
@@ -2206,7 +2207,7 @@ async function saveRecurring(){
   if(id) saved = await updateRecurring(id, payload);
   else { saved = await createRow('recurring_requests', payload); if(saved) state.recurring.push(saved); }
   if(!saved) return;
-  // if it's due today or tomorrow, put it in Dispatch right away
+  // if it's due today (and it's past 7 AM), put it in Dispatch right away
   try{ const {data} = await sb.rpc('generate_recurring_requests'); if(data){ const r = await sb.from('requests').select('*').order('id',{ascending:false}); if(r.data) state.requests = r.data; } }catch(_){}
   state.modal = null; state.draft = {}; render();
   showToast('Saved');
