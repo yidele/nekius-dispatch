@@ -330,7 +330,7 @@ const state = {
   menuOpen: false,
   modal: null,            // {type:'newRequest'|'editRequest'|'addClient'|...}
   draft: {},
-  dispatchTab: 'open',
+  dispatchTab: 'todo',
   dispatchSearch: '',
   filters: { clients: defaultFilters('clients'), volunteers: defaultFilters('volunteers'), drivers: defaultFilters('drivers') },
   filterOpen: {},
@@ -360,7 +360,7 @@ const STATUS_LABELS = {
 };
 const ALL_STATUSES = [...STATUS_FLOW, 'not_covered', 'cancelled'];
 // Both legs share the status name "Posted"; tabs and menus say which leg
-const TAB_LABELS = { posted_pickup:'Posted · Pickup', posted_return:'Posted · Return' };
+const TAB_LABELS = { todo:'To Do', posted_pickup:'Posted · Pickup', posted_return:'Posted · Return' };
 
 function render(){
   // remember which box has the cursor so a re-render (e.g. a toast disappearing) doesn't take it away
@@ -440,6 +440,7 @@ const ICONS = {
   box:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><line x1="12" y1="13" x2="12" y2="21"/></svg>',
   check:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
   filter:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/></svg>',
+  todo:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 8 8 4"/><polyline points="3 13 5 15 8 11"/><line x1="11" y1="6" x2="21" y2="6"/><line x1="11" y1="13" x2="21" y2="13"/><line x1="11" y1="20" x2="21" y2="20"/><circle cx="5.5" cy="20" r="1.6"/></svg>',
   clip:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="3" width="10" height="4" rx="1"/><path d="M7 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/></svg>',
   alert:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>',
   x:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
@@ -753,15 +754,18 @@ function groupByDay(list, finished){
   });
   return groups.map(g=>`${g.label ? `<div class="date-group-label">${esc(g.label)}</div>` : '<div style="height:12px"></div>'}<div class="${finished ? 'row-list' : 'card-grid'}">${g.items.map(requestCard).join('')}</div>`).join('');
 }
-const TAB_ICONS = { open:'info', assigned:'volunteer', posted_pickup:'truck', delivered:'box', finished:'wash', posted_return:'truck', completed:'check', not_covered:'alert', cancelled:'x' };
+const TAB_ICONS = { todo:'todo', open:'info', assigned:'volunteer', posted_pickup:'truck', delivered:'box', finished:'wash', posted_return:'truck', completed:'check', not_covered:'alert', cancelled:'x' };
 // the Completed tab only keeps today's and yesterday's; older ones live in Request History
+// To Do gathers every request still waiting on a dispatcher's next step
+const TODO_STATUSES = ['open','assigned','posted_pickup','finished','posted_return'];
 function inDispatchTab(r, tab){
+  if(tab === 'todo') return TODO_STATUSES.includes(r.status);
   if(r.status !== tab) return false;
   if(tab === 'completed') return ['Today','Yesterday'].includes(dayLabel(doneDate(r)));
   return true;
 }
 function dispatch(){
-  const tabs = [...STATUS_FLOW, 'not_covered', 'cancelled'];
+  const tabs = ['todo', ...STATUS_FLOW, 'not_covered', 'cancelled'];
   const counts = {}; tabs.forEach(t=> counts[t] = state.requests.filter(r=>inDispatchTab(r, t)).length);
   const q = state.dispatchSearch.trim();
   let list = state.requests.filter(r=> inDispatchTab(r, state.dispatchTab));
@@ -780,6 +784,11 @@ function dispatch(){
     </div>
     ${list.length===0 ? `<div class="empty">${icon('clip')}<div>No requests in ${TAB_LABELS[state.dispatchTab]||STATUS_LABELS[state.dispatchTab]}</div></div>` : groupByDay(list, DONE.includes(state.dispatchTab))}
   `;
+}
+
+// after a step, follow the request to its new tab, unless working from To Do
+function followTab(status){
+  if(state.route==='dispatch' && state.dispatchTab !== 'todo') state.dispatchTab = status;
 }
 
 // the day a person was put on a request — only shown when it isn't the request's own day
@@ -1678,7 +1687,7 @@ function initEvents(){
       case 'advance': {
         const id = Number(actionEl.getAttribute('data-id')); const to = actionEl.getAttribute('data-to');
         const saved = await updateRequest(id, {status: to});
-        if(saved){ if(state.route==='dispatch') state.dispatchTab = to; showToast(`#${id} moved to ${TAB_LABELS[to]||STATUS_LABELS[to]}`); }
+        if(saved){ followTab(to); showToast(`#${id} moved to ${TAB_LABELS[to]||STATUS_LABELS[to]}`); }
         break;
       }
       case 'unassign': {
@@ -1690,7 +1699,7 @@ function initEvents(){
         // without its person, a step goes back to waiting for one
         if(field==='volunteer_id' && r.status==='assigned') patch.status = 'open';
         const saved = await updateRequest(id, patch);
-        if(saved){ if(state.route==='dispatch') state.dispatchTab = saved.status; showToast(`Removed the ${who}`); }
+        if(saved){ followTab(saved.status); showToast(`Removed the ${who}`); }
         break;
       }
       case 'delete-person': {
@@ -1785,7 +1794,7 @@ function initEvents(){
       case 'status-menu': state.modal = {type:'statusMenu', id:Number(actionEl.getAttribute('data-id'))}; render(); break;
       case 'set-status': {
         const id = Number(actionEl.getAttribute('data-id')); const status = actionEl.getAttribute('data-status');
-        await updateRequest(id, {status}); state.modal=null; state.dispatchTab = status; render(); break;
+        await updateRequest(id, {status}); state.modal=null; followTab(status); render(); break;
       }
       case 'copy-post': {
         const r = byId(state.requests, Number(actionEl.getAttribute('data-id'))); const leg = actionEl.getAttribute('data-leg');
@@ -1875,7 +1884,7 @@ async function assignToRequest(id, field, value){
   const saved = await updateRequest(id, patch);
   if(!saved) return;
   state.modal = null; state.draft = {}; state.modalStack = []; state.pickerSearch = {};
-  if(state.route==='dispatch') state.dispatchTab = saved.status;
+  followTab(saved.status);
   showToast(next !== r.status ? `#${id} moved to ${TAB_LABELS[next]||STATUS_LABELS[next]}` : 'Saved');
 }
 
@@ -1942,7 +1951,7 @@ async function saveNewRequest(){
   };
   const saved = await createRequest(payload);
   if(!saved) return;
-  state.modal = null; state.draft = {}; state.route = 'dispatch'; state.dispatchTab = saved.status; render();
+  state.modal = null; state.draft = {}; state.route = 'dispatch'; followTab(saved.status); render();
 }
 async function saveEditRequest(id){
   const d = state.draft;
@@ -1956,7 +1965,7 @@ async function saveEditRequest(id){
   patch.status = autoStatus({...r, ...patch});
   const saved = await updateRequest(id, patch);
   if(!saved) return;
-  if(state.route==='dispatch') state.dispatchTab = saved.status;
+  followTab(saved.status);
   state.modal = null; state.draft = {}; render();
 }
 async function savePerson(kind, id){
