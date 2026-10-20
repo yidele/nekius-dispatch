@@ -310,6 +310,24 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .range-row{display:flex;gap:8px;margin-top:10px;}
 .range-row label{margin:0 0 4px;}
 .range-row > div{flex:1;}
+
+/* address form: suggestions while typing + verified / not-found line */
+.addr-street{position:relative;}
+.addr-sugg{position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:5;background:var(--surface);border:1.5px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(15,25,20,.14);max-height:280px;overflow-y:auto;}
+.addr-sugg:empty{display:none;}
+.addr-opt{padding:10px 12px;cursor:pointer;font-size:14px;font-weight:600;color:var(--ink);}
+.addr-opt + .addr-opt{border-top:1px solid var(--line);}
+.addr-opt:hover{background:var(--surface-2);}
+.addr-opt .sub{font-size:12px;font-weight:500;color:var(--ink-soft);margin-top:1px;}
+.addr-credit{padding:6px 12px;font-size:10.5px;color:var(--ink-faint);border-top:1px solid var(--line);}
+.addr-zip-row{display:grid;grid-template-columns:1fr 1.4fr;gap:10px;}
+.addr-status{display:flex;align-items:flex-start;gap:6px;font-size:12.5px;font-weight:600;margin:2px 0 8px;min-height:4px;}
+.addr-status svg{flex-shrink:0;margin-top:1px;}
+.addr-status.ok{color:var(--green);}
+.addr-status.warn{color:var(--accent-ink);}
+.addr-status.bad{color:var(--danger);}
+.addr-status.muted{color:var(--ink-faint);}
+.addr-status a{color:inherit;text-decoration:underline;cursor:pointer;margin-left:4px;}
 </style>
 </head>
 <body>
@@ -800,7 +818,243 @@ function addedOn(r, iso){
 }
 function telLink(phone){ return phone ? `<a href="tel:${esc(phone.replace(/[^\d+]/g,''))}">${esc(phone)}</a>` : ''; }
 // opens the device's maps app (Google Maps link works on iPhone, iPad and Android)
-function mapLink(address){ return address ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}" target="_blank" rel="noopener">${esc(address)}</a>` : ''; }
+function mapUrl(address){ return address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : ''; }
+function mapLink(address){ return address ? `<a href="${mapUrl(address)}" target="_blank" rel="noopener">${esc(address)}</a>` : ''; }
+
+/* ============================= Address form ============================= */
+// Suggestions and checking come from Photon, a free OpenStreetMap geocoder that needs no API key
+// and can be called straight from the browser (this app has no server to keep a key secret).
+const GEOCODER_URL = 'https://photon.komoot.io/api/';
+const ADDRESS_COUNTRY = 'US';
+const US_STATES = {Alabama:'AL',Alaska:'AK',Arizona:'AZ',Arkansas:'AR',California:'CA',Colorado:'CO',Connecticut:'CT',Delaware:'DE',
+  'District of Columbia':'DC',Florida:'FL',Georgia:'GA',Hawaii:'HI',Idaho:'ID',Illinois:'IL',Indiana:'IN',Iowa:'IA',Kansas:'KS',
+  Kentucky:'KY',Louisiana:'LA',Maine:'ME',Maryland:'MD',Massachusetts:'MA',Michigan:'MI',Minnesota:'MN',Mississippi:'MS',Missouri:'MO',
+  Montana:'MT',Nebraska:'NE',Nevada:'NV','New Hampshire':'NH','New Jersey':'NJ','New Mexico':'NM','New York':'NY','North Carolina':'NC',
+  'North Dakota':'ND',Ohio:'OH',Oklahoma:'OK',Oregon:'OR',Pennsylvania:'PA','Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD',
+  Tennessee:'TN',Texas:'TX',Utah:'UT',Vermont:'VT',Virginia:'VA',Washington:'WA','West Virginia':'WV',Wisconsin:'WI',Wyoming:'WY',
+  'Puerto Rico':'PR'};
+const STATE_CODES = new Set(Object.values(US_STATES));
+function stateCode(s){
+  if(!s) return '';
+  const t = s.trim(), up = t.toUpperCase();
+  if(STATE_CODES.has(up)) return up;
+  const hit = Object.keys(US_STATES).find(n => n.toLowerCase() === t.toLowerCase());
+  return hit ? US_STATES[hit] : '';
+}
+
+// The database keeps one address text ("123 Main St, Apt 4, Brooklyn, NY 11211"); the form splits it into parts
+function composeAddress(a, withUnit = true){
+  if(!a) return '';
+  const t = k => (a[k]||'').trim();
+  return [t('street'), withUnit ? t('unit') : '', t('city'), [t('state').toUpperCase(), t('zip')].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+}
+function parseAddress(s){
+  const out = {street:'', unit:'', city:'', state:'', zip:''};
+  if(!s) return out;
+  const parts = s.split(',').map(x=>x.trim()).filter(Boolean);
+  if(parts.length > 1 && /^(usa?|united states( of america)?)$/i.test(parts[parts.length-1])) parts.pop();
+  if(parts.length > 1){
+    // last part looks like "NY 11211", "11211", "NY" or "Brooklyn NY 11211"
+    let last = parts[parts.length-1];
+    const zip = last.match(/\s*\b(\d{5}(?:-\d{4})?)$/);
+    if(zip) last = last.slice(0, zip.index).trim();
+    const words = last.split(/\s+/);
+    let st = stateCode(words[words.length-1]) ? words.pop() : '';
+    if(!st && stateCode(last)){ st = last; words.length = 0; }
+    if(zip || st){
+      parts.pop();
+      out.zip = zip ? zip[1] : ''; out.state = stateCode(st);
+      out.city = words.join(' ').trim();
+      if(!out.city && parts.length > 1) out.city = parts.pop();
+      out.street = parts.shift() || ''; out.unit = parts.join(', ');
+      return out;
+    }
+  }
+  // anything we can't split keeps its exact text in the street box
+  out.street = s.trim();
+  return out;
+}
+
+// Where each address form keeps its parts: 'draft' = the open Add/Edit person form, 'mash' = the Mashilach preset in Settings
+function addrHolder(key){ return key === 'mash' ? state.mashAddr : state.draft._addr; }
+function newAddrHolder(address){ return {...parseAddress(address), _status:'', _sugg:[], _match:null, _dirty:false}; }
+function syncAddr(key){ if(key === 'draft') state.draft.address = composeAddress(state.draft._addr); }
+
+function featureToAddr(f){
+  const p = f.properties || {};
+  const road = p.street || (p.type === 'street' ? p.name : '');
+  return {
+    street: [p.housenumber, road].filter(Boolean).join(' '),
+    city: p.city || p.town || p.village || p.locality || p.district || p.county || '',
+    state: stateCode(p.state) || '', zip: (p.postcode||'').split(/[;,]/)[0].trim(),
+    housenumber: p.housenumber || '', road: road || '',
+    place: p.name && p.name !== road && p.type !== 'street' ? p.name : '',
+  };
+}
+async function geocode(q, limit, signal){
+  const res = await fetch(`${GEOCODER_URL}?q=${encodeURIComponent(q)}&limit=${limit}&lang=en`, {signal});
+  if(!res.ok) throw new Error('geocoder ' + res.status);
+  const data = await res.json();
+  const seen = new Set();
+  return (data.features||[])
+    .filter(f => (f.properties?.countrycode||'').toUpperCase() === ADDRESS_COUNTRY)
+    .map(featureToAddr)
+    .filter(c => c.road && !seen.has(composeAddress(c)) && seen.add(composeAddress(c)));
+}
+
+// compare "123 N. Main Street" with "123 North Main St"
+const STREET_WORDS = {street:'st',avenue:'ave',av:'ave',road:'rd',drive:'dr',lane:'ln',boulevard:'blvd',court:'ct',place:'pl',
+  terrace:'ter',parkway:'pkwy',highway:'hwy',square:'sq',circle:'cir',north:'n',south:'s',east:'e',west:'w'};
+function normStreet(s){
+  return (s||'').toLowerCase().replace(/[.,#]/g,' ').split(/\s+/).filter(Boolean)
+    .map(w => STREET_WORDS[w] || w.replace(/^(\d+)(st|nd|rd|th)$/, '$1')).join(' ');
+}
+function houseNumber(street){ const m = (street||'').trim().match(/^(\d+[a-z]?(?:-\d+)?)\b/i); return m ? m[1].toLowerCase() : ''; }
+function sameCity(a, b){ return !a || !b || a.trim().toLowerCase() === b.trim().toLowerCase(); }
+
+const addrTimers = {}, addrAborts = {};
+function scheduleAddr(key, kind, fn, ms){
+  clearTimeout(addrTimers[key+kind]);
+  addrTimers[key+kind] = setTimeout(fn, ms);
+}
+async function suggestAddresses(key){
+  const a = addrHolder(key); if(!a) return;
+  const typed = (a.street||'').trim();
+  if(typed.length < 3){ a._sugg = []; updateAddrUI(key); return; }
+  addrAborts[key]?.abort(); const ctl = addrAborts[key] = new AbortController();
+  try{
+    const list = await geocode([typed, a.city, a.state, a.zip].filter(Boolean).join(' '), 10, ctl.signal);
+    if(addrHolder(key) !== a || (a.street||'').trim() !== typed) return; // typed on since, or the form closed
+    a._sugg = list.slice(0, 5); updateAddrUI(key);
+  }catch(_){ /* no suggestions this time; checking below still reports a connection problem */ }
+}
+async function verifyAddress(key){
+  const a = addrHolder(key); if(!a) return;
+  const full = composeAddress(a, false);
+  if(!a.street?.trim()){ a._status = ''; a._match = null; updateAddrUI(key); return; }
+  a._status = 'checking'; updateAddrUI(key);
+  let list;
+  try{ list = await geocode(full, 5); }
+  catch(_){ if(addrHolder(key) === a && composeAddress(a, false) === full){ a._status = 'error'; updateAddrUI(key); } return; }
+  if(addrHolder(key) !== a || composeAddress(a, false) !== full) return;
+  const hn = houseNumber(a.street), road = normStreet(a.street.replace(/^\s*\d+[a-z]?(?:-\d+)?\s+/i, ''));
+  const zipOk = c => !a.zip || !c.zip || c.zip.slice(0,5) === a.zip.trim().slice(0,5);
+  const exact = list.find(c => normStreet(c.road) === road && c.housenumber.toLowerCase() === hn && hn && zipOk(c) && sameCity(c.city, a.city));
+  const streetOnlyHit = list.find(c => normStreet(c.road) === road && zipOk(c) && sameCity(c.city, a.city));
+  if(exact){
+    a._status = 'ok'; a._match = null;
+    // fill in whatever was left out (ZIP, state, city) from the match
+    let filled = false;
+    for(const k of ['city','state','zip']) if(!(a[k]||'').trim() && exact[k]){ a[k] = exact[k]; filled = true; }
+    if(filled){ syncAddr(key); render(); return; }
+  } else if(streetOnlyHit){
+    // OpenStreetMap doesn't list every house number, so a known street with a typed number is good enough
+    a._status = hn ? 'street' : 'nonumber'; a._match = null;
+  } else if(list.length){
+    // keep the house number that was typed when the match is just the street
+    const best = {...(list.find(c => hn && c.housenumber.toLowerCase() === hn) || list[0])};
+    if(!best.housenumber && hn){ best.housenumber = hn; best.street = `${hn} ${best.road}`; }
+    a._status = 'suggest'; a._match = best;
+  } else { a._status = 'notfound'; a._match = null; }
+  updateAddrUI(key);
+}
+
+function addrSuggHtml(key){
+  const a = addrHolder(key);
+  if(!a?._sugg?.length) return '';
+  return a._sugg.map((c,i)=>`<div class="addr-opt" data-action="pick-address" data-key="${key}" data-i="${i}">
+      ${esc(c.place ? `${c.place} · ${c.street}` : c.street)}<div class="sub">${esc([c.city, [c.state, c.zip].filter(Boolean).join(' ')].filter(Boolean).join(', '))}</div></div>`).join('')
+    + `<div class="addr-credit">Addresses © OpenStreetMap contributors</div>`;
+}
+function addrStatusHtml(key){
+  const a = addrHolder(key);
+  switch(a?._status){
+    case 'checking': return ['muted', 'Checking address…'];
+    case 'ok': return ['ok', `${icon('check')} Address verified`];
+    case 'street': return ['ok', `${icon('check')} Street verified`];
+    case 'nonumber': return ['warn', `${icon('alert')} Street found — add the house number`];
+    case 'suggest': return ['warn', `${icon('alert')} <span>Couldn't verify this exact address. Did you mean <b>${esc(composeAddress(a._match))}</b>?<a data-action="use-address-match" data-key="${key}">Use this</a></span>`];
+    case 'notfound': return ['bad', `${icon('alert')} Address not found`];
+    case 'error': return ['muted', `Couldn't check the address`];
+    default: return ['', ''];
+  }
+}
+// update the suggestion list and status line in place, so typing isn't interrupted by a full re-render
+function updateAddrUI(key){
+  const sugg = document.getElementById(`addr-${key}-sugg`);
+  if(sugg) sugg.innerHTML = addrSuggHtml(key);
+  const st = document.getElementById(`addr-${key}-status`);
+  if(st){ const [cls, html] = addrStatusHtml(key); st.className = 'addr-status ' + cls; st.innerHTML = html; }
+}
+function addressFields(key, label = 'Address'){
+  const a = addrHolder(key);
+  if(a && !a._checked){ a._checked = true; if(a.street) setTimeout(()=>verifyAddress(key), 0); }
+  const input = (part, lbl, extra='') => `<div class="field"><label>${lbl}</label><input id="addr-${key}-${part}" data-addr="${part}" autocomplete="off" value="${esc(a?.[part]||'')}" ${extra}></div>`;
+  const [cls, html] = addrStatusHtml(key);
+  return `<div class="addr-block" data-addr-key="${key}">
+    <div class="field addr-street"><label>${label}</label>
+      <input id="addr-${key}-street" data-addr="street" autocomplete="off" autocorrect="off" value="${esc(a?.street||'')}">
+      <div class="addr-sugg" id="addr-${key}-sugg">${addrSuggHtml(key)}</div>
+    </div>
+    ${input('unit', 'Apt / Unit')}
+    ${input('city', 'City')}
+    <div class="addr-zip-row">
+      ${input('state', 'State', 'maxlength="2" autocapitalize="characters"')}
+      ${input('zip', 'ZIP code', 'inputmode="numeric" maxlength="10"')}
+    </div>
+    <div class="addr-status ${cls}" id="addr-${key}-status">${html}</div>
+  </div>`;
+}
+function onAddrInput(el){
+  const key = el.closest('[data-addr-key]')?.getAttribute('data-addr-key');
+  const a = addrHolder(key); if(!a) return;
+  const part = el.getAttribute('data-addr');
+  a[part] = part === 'state' ? el.value.toUpperCase() : el.value;
+  if(part === 'state' && el.value !== a[part]){ const p = el.selectionStart; el.value = a[part]; try{ el.setSelectionRange(p,p); }catch(_){} }
+  a._dirty = true;
+  syncAddr(key);
+  if(part === 'unit') return; // the apt/unit isn't part of the check, so a verified address stays verified
+  a._status = ''; a._match = null;
+  if(part === 'street') scheduleAddr(key, 's', ()=>suggestAddresses(key), 300);
+  else { a._sugg = []; clearTimeout(addrTimers[key+'s']); addrAborts[key]?.abort(); } // moved on from the street: a late answer shouldn't reopen the list
+  updateAddrUI(key);
+  scheduleAddr(key, 'v', ()=>verifyAddress(key), 1200);
+}
+function pickAddress(key, i){
+  const a = addrHolder(key), c = a?._sugg?.[i]; if(!c) return;
+  clearTimeout(addrTimers[key+'s']); clearTimeout(addrTimers[key+'v']); // the pick replaces whatever was still waiting to be looked up
+  const hn = houseNumber(a.street);
+  // a street-only suggestion keeps the house number that was already typed
+  const street = !c.housenumber && hn ? `${hn} ${c.road}` : c.street;
+  Object.assign(a, {street, city:c.city, state:c.state, zip:c.zip, _sugg:[], _match:null, _dirty:true, _status: c.housenumber ? 'ok' : ''});
+  syncAddr(key); render();
+  if(!c.housenumber){ verifyAddress(key); if(!hn) document.getElementById(`addr-${key}-street`)?.focus(); }
+  else if(!a.unit) document.getElementById(`addr-${key}-unit`)?.focus();
+}
+function useAddressMatch(key){
+  const a = addrHolder(key), m = a?._match; if(!m) return;
+  clearTimeout(addrTimers[key+'v']);
+  Object.assign(a, {street:m.street, city:m.city || a.city, state:m.state || a.state, zip:m.zip || a.zip, _match:null, _dirty:true});
+  syncAddr(key); render(); verifyAddress(key);
+}
+function closeAddrSuggestions(except){
+  for(const key of ['draft','mash']){
+    const a = addrHolder(key);
+    if(key !== except && a?._sugg?.length){ a._sugg = []; updateAddrUI(key); }
+  }
+}
+// Before saving: an address that was changed but couldn't be verified needs a second look
+async function confirmAddress(key){
+  const a = addrHolder(key);
+  if(!a || !a._dirty || !composeAddress(a)) return true;
+  clearTimeout(addrTimers[key+'v']);
+  if(!['ok','street','nonumber','suggest','notfound','error'].includes(a._status)) await verifyAddress(key);
+  if(['ok','street','error'].includes(a._status)) return true;
+  const why = a._status === 'nonumber' ? 'It has no house number.'
+    : a._status === 'suggest' ? `Did you mean:\n${composeAddress(a._match)}`
+    : 'It could not be found on the map.';
+  return confirm(`Please check this address:\n\n${composeAddress(a)}\n\n${why}\n\nSave it anyway?`);
+}
 function personBox(role, kind, p, opts={}){
   if(!p) return '';
   return `${opts.when ? `<div class="added-on">${esc(opts.when)}</div>` : ''}<div class="person-box ${opts.faded?'faded':''} ${opts.when?'dated':''}">
@@ -1204,9 +1458,11 @@ function settingsSection(key, title, contentHtml){
 function settings(){
   if(state.profile?.role !== 'editor') return `<div class="empty">Settings are editor-only.</div>`;
   const s = state.settings;
+  // the Mashilach preset form starts from what's saved, and again after every save
+  if(!state.mashAddr || state.mashAddr._src !== (s.mashilach_address||'')) state.mashAddr = {...newAddrHolder(s.mashilach_address), _src: s.mashilach_address||''};
   return `<div class="section-title">Settings</div>
     ${settingsSection('mashilach','Mashilach default address', `
-      <div class="field"><label>Preset address</label><input id="set-mashilach-address" value="${esc(s.mashilach_address||'')}"></div>
+      ${addressFields('mash', 'Preset address')}
       <div class="field"><label>Preset address instructions</label><textarea id="set-mashilach-note" rows="2">${esc(s.mashilach_note||'')}</textarea></div>
       <div class="btn btn-primary btn-sm" style="margin-top:10px;" data-action="save-mashilach-settings">Save</div>
     `)}
@@ -1278,6 +1534,7 @@ function personFormModal(kind, id){
   if(d._formKind !== kind || d._formId !== (id||'new')){
     // new people start out Active; the status can still be changed below
     state.draft = { _formKind:kind, _formId:id||'new', ...(existing || {status:'active', available_days:[], ...(state.pendingPrefill||{})}) };
+    state.draft._addr = newAddrHolder(state.draft.address);
     state.pendingPrefill = null;
   }
   const titleKind = kind.charAt(0).toUpperCase()+kind.slice(1);
@@ -1287,7 +1544,7 @@ function personFormModal(kind, id){
       <div class="field"><label>Name</label><input data-bind="name" value="${esc(state.draft.name||'')}"></div>
       <div class="field"><label>Phone</label><input data-bind="phone" type="tel" value="${esc(state.draft.phone||'')}"></div>
       <div class="toggle"><span>Mashilach</span><div class="switch ${state.draft.is_mashilach?'on':''}" data-action="toggle-mashilach"><div class="knob"></div></div></div>
-      <div class="field"><label>Address</label><input data-bind="address" value="${esc(state.draft.address||'')}"></div>
+      ${addressFields('draft')}
       ${notesFields()}
       ${statusToggleField(state.draft.status)}
     `;
@@ -1296,7 +1553,7 @@ function personFormModal(kind, id){
     fields = `
       <div class="field"><label>Name</label><input data-bind="name" value="${esc(state.draft.name||'')}"></div>
       <div class="field"><label>Phone</label><input data-bind="phone" type="tel" value="${esc(state.draft.phone||'')}"></div>
-      <div class="field"><label>Address</label><input data-bind="address" value="${esc(state.draft.address||'')}"></div>
+      ${addressFields('draft')}
       ${notesFields()}
       <label>Available days</label>
       <div class="chip-row">${WORK_DAYS.map(i=>`<div class="chip ${days.includes(i)?'active':''}" data-action="toggle-day" data-day="${i}">${DAY_SHORT[i]}</div>`).join('')}</div>
@@ -1319,7 +1576,7 @@ function personFormModal(kind, id){
       <div class="field"><label>Name</label><input data-bind="name" value="${esc(state.draft.name||'')}"></div>
       <div class="field"><label>Phone</label><input data-bind="phone" type="tel" value="${esc(state.draft.phone||'')}"></div>
       <div class="field"><label>Email</label><input data-bind="email" type="email" value="${esc(state.draft.email||'')}"></div>
-      <div class="field"><label>Address</label><input data-bind="address" value="${esc(state.draft.address||'')}"></div>
+      ${addressFields('draft')}
       <div class="field"><label>Note</label><textarea data-bind="private_note" rows="2">${esc(state.draft.private_note||'')}</textarea></div>
       <label>Contact method</label>
       <div class="chip-row">
@@ -1578,6 +1835,8 @@ function initEvents(){
     if(e.target.closest('.modal-overlay') && !e.target.closest('.modal') && e.target.closest('[data-action="overlay-click"]')){
       closeModal(); return;
     }
+    // tapping anywhere but an address suggestion closes the suggestion list
+    closeAddrSuggestions(e.target.closest('.addr-sugg') ? e.target.closest('[data-addr-key]')?.getAttribute('data-addr-key') : null);
     if(e.target.closest('a[href]')) return; // phone and map links do their own thing
     const navEl = e.target.closest('[data-nav]');
     const actionEl = e.target.closest('[data-action]');
@@ -1782,7 +2041,10 @@ function initEvents(){
       case 'toggle-settings': { const k=actionEl.getAttribute('data-key'); state.settingsExpanded[k]=!state.settingsExpanded[k]; render(); break; }
       case 'toggle-mashilach': {
         state.draft.is_mashilach = !state.draft.is_mashilach;
-        if(state.draft.is_mashilach){ state.draft.address = state.settings.mashilach_address||state.draft.address; state.draft.note = state.settings.mashilach_note||state.draft.note; }
+        if(state.draft.is_mashilach){
+          state.draft.address = state.settings.mashilach_address||state.draft.address; state.draft.note = state.settings.mashilach_note||state.draft.note;
+          state.draft._addr = newAddrHolder(state.draft.address);
+        }
         render(); break;
       }
       case 'toggle-chip': { const f=actionEl.getAttribute('data-field'); state.draft[f]=!state.draft[f]; render(); break; }
@@ -1804,7 +2066,11 @@ function initEvents(){
         const r = byId(state.requests, Number(actionEl.getAttribute('data-id'))); const leg = actionEl.getAttribute('data-leg');
         copyToClipboard(driverMessage(r, leg)); break;
       }
-      case 'save-mashilach-settings': await updateSettings({mashilach_address: document.getElementById('set-mashilach-address').value, mashilach_note: document.getElementById('set-mashilach-note').value}); showToast('Saved'); render(); break;
+      case 'pick-address': pickAddress(actionEl.getAttribute('data-key'), Number(actionEl.getAttribute('data-i'))); break;
+      case 'use-address-match': useAddressMatch(actionEl.getAttribute('data-key')); break;
+      case 'save-mashilach-settings':
+        if(!(await confirmAddress('mash'))) break;
+        await updateSettings({mashilach_address: composeAddress(state.mashAddr), mashilach_note: document.getElementById('set-mashilach-note').value}); showToast('Saved'); render(); break;
       case 'save-postmsg-settings': await updateSettings({post_message_template: {before:document.getElementById('set-pm-before').value, between:document.getElementById('set-pm-between').value, after:document.getElementById('set-pm-after').value}}); showToast('Saved'); render(); break;
       case 'save-drivermsg-settings': await updateSettings({driver_message_pickup_template: document.getElementById('set-dm-pickup').value, driver_message_return_template: document.getElementById('set-dm-return').value}); showToast('Saved'); render(); break;
       case 'send-invite': {
@@ -1841,6 +2107,8 @@ function initEvents(){
       }
       return;
     }
+    const addrEl = e.target.closest('[data-addr]');
+    if(addrEl){ onAddrInput(addrEl); return; }
     const bindEl = e.target.closest('[data-bind]');
     if(bindEl){ state.draft[bindEl.getAttribute('data-bind')] = bindEl.value; }
     if(e.target.id && e.target.id.startsWith('auth-')) state.authForm[e.target.id] = e.target.value;
@@ -1977,6 +2245,7 @@ async function savePerson(kind, id){
   const d = {};
   for(const k of COLS){ if(k in state.draft){ const val = state.draft[k]; d[k] = (typeof val==='string' && val.trim()==='') ? null : (typeof val==='string' ? val.trim() : val); } }
   if(!d.name){ showToast('Name is required'); return; }
+  if(!(await confirmAddress('draft'))) return;
   if(kind==='volunteer' && d.status!=='temporary_inactive'){ d.temp_inactive_from = null; d.temp_inactive_until = null; }
   if(kind==='volunteer' && d.status==='temporary_inactive' && !d.temp_inactive_until){ showToast('Pick the "Until" date'); return; }
   let saved = null;
