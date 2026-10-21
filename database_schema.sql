@@ -466,3 +466,16 @@ alter table recurring_requests add column if not exists day_people jsonb not nul
 --   if local time < 07:00 → create nothing; otherwise create only today's.
 -- (applied as migration recurring_opens_7am_same_day)
 -- ============================================================
+
+-- ============================================================
+-- Messages (migration messaging_tables): texting inside the app.
+-- Nothing is actually sent until a texting company is connected (app_settings.sms_connected).
+--   contacts       people to text who aren't drivers/volunteers/clients
+--   contact_lists  saved groups; members = [{"kind":"driver","id":"..."}]
+--   posts          one post of open calls sent to a group
+--   messages       every text in/out; phone = last 10 digits; status not_sent/queued/sent/delivered/failed/received
+--   post_numbers   a call's number for the day (1, 2, 3 …), unique per day
+--   call_offers    a driver replying with a call's number; waiting/accepted/declined
+--   app_settings.post_header / post_footer  first and last line of a post
+-- All tables: row-level security, any known user (is_known_user()).
+-- ============================================================

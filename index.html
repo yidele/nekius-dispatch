@@ -328,6 +328,54 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .addr-status.bad{color:var(--danger);}
 .addr-status.muted{color:var(--ink-faint);}
 .addr-status a{color:inherit;text-decoration:underline;cursor:pointer;margin-left:4px;}
+
+/* messages: inbox, conversation, posts */
+.btn:disabled{opacity:.45;cursor:default;}
+.btn-auto{width:auto;flex:none;}
+.conv-row{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-m);padding:10px 12px;margin-bottom:8px;cursor:pointer;}
+.conv-row:hover{border-color:var(--primary-light);}
+.conv-row.active{border-color:var(--primary);background:var(--primary-light);}
+.conv-avatar{width:40px;height:40px;border-radius:50%;background:var(--primary-light);color:var(--primary-dark);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;}
+.conv-main{flex:1;min-width:0;}
+.conv-top{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.conv-top b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.conv-snip{font-size:13.5px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.conv-snip.unread{color:var(--ink);font-weight:600;}
+.unread-dot{background:var(--primary);color:#fff;border-radius:999px;font-size:11.5px;font-weight:700;min-width:22px;height:22px;padding:0 6px;display:flex;align-items:center;justify-content:center;}
+.thread{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-l);display:flex;flex-direction:column;overflow:hidden;}
+.thread-head{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);}
+.bubbles{padding:14px;display:flex;flex-direction:column;gap:10px;min-height:46vh;max-height:62vh;overflow-y:auto;background:var(--bg);}
+.bubble{max-width:84%;}
+.bubble.in{align-self:flex-start;}
+.bubble.out{align-self:flex-end;text-align:right;}
+.btext{display:inline-block;text-align:left;padding:9px 13px;border-radius:18px;font-size:14.5px;line-height:1.4;word-break:break-word;}
+.bubble.in .btext{background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:6px;}
+.bubble.out .btext{background:var(--primary);color:#fff;border-bottom-right-radius:6px;}
+.bubble.out .btext a{color:#fff;}
+.bmeta{font-size:11.5px;color:var(--ink-faint);margin-top:3px;padding:0 4px;}
+.bmeta .ns{color:var(--danger);font-weight:600;}
+.compose{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);align-items:flex-end;}
+.compose textarea{flex:1;margin:0;resize:none;}
+.thread-empty{display:none;}
+.inbox.has-thread .conv-list{display:none;}
+.offer-box{border:1.5px solid var(--accent);background:var(--accent-light);border-radius:12px;padding:8px 12px;margin-top:10px;}
+.offer-box .role{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--accent-ink);}
+.offer-row{display:flex;align-items:center;gap:10px;padding:6px 0;}
+.offer-row + .offer-row{border-top:1px solid rgba(138,90,22,.18);}
+.num-badge{display:inline-flex;min-width:28px;height:28px;padding:0 6px;border-radius:8px;background:var(--primary);color:#fff;font-weight:700;align-items:center;justify-content:center;font-size:13.5px;flex-shrink:0;}
+.num-badge.new{background:var(--surface-2);color:var(--ink-soft);font-size:11px;}
+.post-card,.list-box{margin-top:0;margin-bottom:10px;}
+.post-body{white-space:pre-wrap;font-size:13.5px;color:var(--ink-soft);background:var(--surface-2);border-radius:10px;padding:8px 10px;margin-top:8px;}
+.member-chip{display:inline-flex;align-items:center;gap:6px;background:var(--primary-light);color:var(--primary-dark);border-radius:999px;padding:5px 6px 5px 12px;font-size:13px;font-weight:600;}
+.member-chip a{cursor:pointer;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(18,59,51,.12);font-size:15px;line-height:1;}
+.nav-count{margin-left:auto;background:var(--primary);color:#fff;border-radius:999px;font-size:11px;padding:1px 8px;font-weight:700;}
+@media (min-width: 1024px){
+  .inbox{display:grid;grid-template-columns:minmax(280px,360px) 1fr;gap:16px;align-items:start;}
+  .inbox.has-thread .conv-list{display:block;}
+  .thread-empty{display:flex;align-items:center;justify-content:center;min-height:60vh;}
+  .thread-back{display:none;}
+  .thread{position:sticky;top:76px;}
+}
 </style>
 </head>
 <body>
@@ -368,6 +416,8 @@ const state = {
   expanded: {},           // finished requests opened from their one-line view
   volSort: 'rotation', volDays: [],
   navStack: [],           // where to go back to from a profile page
+  contacts: [], lists: [], messages: [], posts: [], postNumbers: [], offers: [],
+  msgTab: 'inbox', msgPhone: null, msgSearch: '', msgCompose: {}, msgContactSearch: '', msgContactKind: '',
 };
 
 const STATUS_FLOW = ['open','assigned','posted_pickup','delivered','finished','posted_return','completed'];
@@ -399,6 +449,8 @@ function render(){
 }
 
 function afterRender(){
+  // a conversation opens at its newest message
+  const bubbles = document.querySelector('.bubbles'); if(bubbles) bubbles.scrollTop = bubbles.scrollHeight;
   if(state.route === 'dispatch'){
     requestAnimationFrame(()=>{
       const el = document.querySelector('.tab.active');
@@ -459,6 +511,7 @@ const ICONS = {
   check:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
   filter:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/></svg>',
   todo:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 8 8 4"/><polyline points="3 13 5 15 8 11"/><line x1="11" y1="6" x2="21" y2="6"/><line x1="11" y1="13" x2="21" y2="13"/><line x1="11" y1="20" x2="21" y2="20"/><circle cx="5.5" cy="20" r="1.6"/></svg>',
+  chat:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.5-4.9A8 8 0 1 1 21 12z"/></svg>',
   clip:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="3" width="10" height="4" rx="1"/><path d="M7 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/></svg>',
   alert:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>',
   x:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
@@ -539,7 +592,7 @@ function volunteerReadiness(vol){
 async function loadAll(){
   // make sure today's recurring requests exist once it's 7 AM (the database also does this every hour)
   try{ await sb.rpc('generate_recurring_requests'); }catch(_){}
-  const [c,v,d,r,s,p,inv,rec,ov] = await Promise.all([
+  const [c,v,d,r,s,p,inv,rec,ov,ct,cl,msg,pst,pn,off] = await Promise.all([
     sb.from('clients').select('*').order('name'),
     sb.from('volunteers').select('*').order('name'),
     sb.from('drivers').select('*').order('name'),
@@ -549,11 +602,18 @@ async function loadAll(){
     sb.from('invites').select('*').order('created_at'),
     sb.from('recurring_requests').select('*').order('id'),
     sb.from('recurring_overrides').select('*'),
+    sb.from('contacts').select('*').order('name'),
+    sb.from('contact_lists').select('*').order('name'),
+    sb.from('messages').select('*').order('created_at',{ascending:false}).limit(2000),
+    sb.from('posts').select('*').order('id',{ascending:false}).limit(20),
+    sb.from('post_numbers').select('*').eq('day', todayKey()),
+    sb.from('call_offers').select('*').eq('status','waiting'),
   ]);
   const failed = [c,v,d,r,s].find(x=>x.error);
   if(failed) showToast('Could not load data: ' + failed.error.message);
   state.clients = c.data||[]; state.volunteers = v.data||[]; state.drivers = d.data||[];
   state.requests = r.data||[]; state.profiles = p.data||[]; state.invites = inv.data||[]; state.recurring = rec.data||[]; state.overrides = ov.data||[];
+  state.contacts = ct.data||[]; state.lists = cl.data||[]; state.messages = msg.data||[]; state.posts = pst.data||[]; state.postNumbers = pn.data||[]; state.offers = off.data||[];
   if(s.data) state.settings = { ...state.settings, ...s.data };
   state.loading = false;
   render();
@@ -615,7 +675,7 @@ function layout(innerHtml){
     </div></div>`;
   }
   if(state.loading){ return `<div class="header"><span class="title">Kvisa Dispatch</span></div><div class="main"><div class="empty">Loading…</div></div>`; }
-  const titles = {dashboard:'Dashboard',dispatch:'Dispatch',clients:'Clients',volunteers:'Volunteers',drivers:'Drivers',history:'Request History',recurring:'Recurring Requests',settings:'Settings',client:'Client Details',volunteer:'Volunteer Details',driver:'Driver Details'};
+  const titles = {dashboard:'Dashboard',dispatch:'Dispatch',clients:'Clients',volunteers:'Volunteers',drivers:'Drivers',history:'Request History',recurring:'Recurring Requests',messages:'Messages',settings:'Settings',client:'Client Details',volunteer:'Volunteer Details',driver:'Driver Details'};
   // the round + button hides while a filter panel is open so it can't cover the panel's buttons
   const fab = state.filterOpen[state.route] ? null
     : {clients:'addClient', volunteers:'addVolunteer', drivers:'addDriver', recurring: isEditor() ? 'recurringForm' : null}[state.route];
@@ -643,14 +703,17 @@ function hamburgerMenu(){
 // the menu itself: slides in on phones and tablets, always shown on the left on computers
 function navPanel(){
   const items = [
-    ['dashboard','Dashboard','dash'], ['dispatch','Dispatch','dispatch'], ['clients','Clients','client'],
+    ['dashboard','Dashboard','dash'], ['dispatch','Dispatch','dispatch'],
+    // texting stays editor-only until a texting company is connected
+    ...(isEditor() || state.settings.sms_connected ? [['messages','Messages','chat', unreadCount()]] : []),
+    ['clients','Clients','client'],
     ['volunteers','Volunteers','volunteer'], ['drivers','Drivers','driver'], ['recurring','Recurring Requests','repeat'], ['history','Request History','history'],
   ];
   if(state.profile?.role === 'editor') items.push(['settings','Settings','settings']);
   const current = {client:'clients', volunteer:'volunteers', driver:'drivers'}[state.route] || state.route;
   return `<div class="drawer-head"><img class="brand-logo" src="logo-mark.png" alt="Kvisa"><div class="brand-name">Dispatch</div></div>
     <div class="drawer-nav">
-      ${items.map(([r,l,ic])=>`<div class="nav-item ${current===r?'active':''}" data-nav="${r}">${icon(ic)}<span>${l}</span></div>`).join('')}
+      ${items.map(([r,l,ic,n])=>`<div class="nav-item ${current===r?'active':''}" data-nav="${r}">${icon(ic)}<span>${l}</span>${n?`<span class="nav-count">${n}</span>`:''}</div>`).join('')}
       <hr class="sep">
       <div class="nav-item" data-action="logout">${icon('logout')}<span>Log out</span></div>
     </div>`;
@@ -1096,6 +1159,7 @@ function requestCard(r){
   const copyPost = leg => btn('Copy Post Message', 'copy', `data-action="copy-post" data-id="${r.id}" data-leg="${leg}"`);
   const copyDriver = leg => btn('Copy Driver Message', 'copy', `data-action="copy-driver" data-id="${r.id}" data-leg="${leg}"`);
   const isDone = DONE.includes(r.status);
+  const leg = openLeg(r), postNo = leg && postNumber(r, leg), offers = leg ? offersFor(r, leg) : [];
   let actions = '';
   switch(r.status){
     case 'open': actions = vol
@@ -1114,7 +1178,7 @@ function requestCard(r){
   if(!vol && !isDone && r.status !== 'open') actions = assign('volunteer_id', 'Assign Volunteer') + actions;
   return `<div class="card req-card status-${r.status}">
     <div class="req-head">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span class="req-id">#${r.id}</span>${statusBadgeInteractive(r)}${r.recurring_id ? `<span class="tag gray">${icon('repeat')} Recurring</span>` : ''}${by ? `<span class="by">by ${esc(by)}</span>` : ''}</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span class="req-id">#${r.id}</span>${statusBadgeInteractive(r)}${r.recurring_id ? `<span class="tag gray">${icon('repeat')} Recurring</span>` : ''}${postNo ? `<span class="tag">Post #${postNo}</span>` : ''}${by ? `<span class="by">by ${esc(by)}</span>` : ''}</div>
       <div class="req-tools">
         <button class="icon-only" title="Edit request" data-action="open-modal" data-modal="editRequest" data-id="${r.id}">${ICON_EDIT}</button>
         <button class="icon-only danger" title="Delete request" data-action="delete-request" data-id="${r.id}">${ICON_TRASH}</button>
@@ -1127,6 +1191,7 @@ function requestCard(r){
     ${personBox('Pickup driver', 'driver', pdriver, {faded: pickupFaded, reqId:r.id, removeField: isDone ? null : 'pickup_driver_id', when: addedOn(r, r.pickup_assigned_at)})}
     ${personBox('Return driver', 'driver', rdriver, {reqId:r.id, removeField: isDone ? null : 'return_driver_id', when: addedOn(r, r.return_assigned_at)})}
     ${r.notes ? `<div class="private">${esc(r.notes)}</div>` : ''}
+    ${offers.length ? `<div class="offer-box"><div class="role">Wants this call</div>${offers.map(o=>offerRow(o, false)).join('')}</div>` : ''}
     ${actions ? `<div class="req-actions">${actions}</div>` : ''}
     ${DONE.includes(r.status) ? `<div style="text-align:center;margin-top:10px;"><a style="cursor:pointer;font-size:13px;color:var(--ink-faint);" data-action="toggle-expand" data-id="${r.id}">Show less &#9650;</a></div>` : ''}
   </div>`;
@@ -1475,6 +1540,11 @@ function settings(){
       <div class="field"><label>After</label><input id="set-pm-after" value="${esc(s.post_message_template?.after||'')}"></div>
       <div class="btn btn-primary btn-sm" style="margin-top:10px;" data-action="save-postmsg-settings">Save</div>
     `)}
+    ${settingsSection('postcalls','Posts to drivers', `
+      <div class="field"><label>First line</label><input id="set-post-header" value="${esc(s.post_header||'')}"></div>
+      <div class="field"><label>Last line</label><input id="set-post-footer" value="${esc(s.post_footer||'')}"></div>
+      <div class="btn btn-primary btn-sm" style="margin-top:10px;" data-action="save-postcalls-settings">Save</div>
+    `)}
     ${settingsSection('drivermsg','Driver Message templates', `
       <div class="field"><label>Pickup leg template</label><textarea id="set-dm-pickup" rows="4">${esc(s.driver_message_pickup_template||'')}</textarea></div>
       <div class="field"><label>Return leg template</label><textarea id="set-dm-return" rows="4">${esc(s.driver_message_return_template||'')}</textarea></div>
@@ -1503,7 +1573,344 @@ function settings(){
   `;
 }
 
-const routes = { dashboard, dispatch, clients, volunteers, drivers, recurring, history, settings, client: clientDetail, volunteer: volunteerDetail, driver: driverDetail };
+/* ============================= Messages ============================= */
+// phone numbers are compared by their last 10 digits
+function normPhone(p){ const d = String(p||'').replace(/\D/g,''); return d.length >= 10 ? d.slice(-10) : d; }
+function fmtPhone(p){ const d = normPhone(p); return d.length===10 ? `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}` : String(p||''); }
+const PEOPLE_KINDS = [['driver','Driver'], ['volunteer','Volunteer'], ['client','Client'], ['contact','Other']];
+function kindLabel(k){ return (PEOPLE_KINDS.find(x=>x[0]===k)||[])[1] || 'Phone'; }
+// everyone in the app who has a phone number
+function everyone(){
+  return PEOPLE_KINDS.flatMap(([kind])=> (state[kind+'s']||[]).filter(p=>normPhone(p.phone).length===10)
+    .map(p=>({kind, id:p.id, name:p.name, phone:normPhone(p.phone), status:p.status||'active'})));
+}
+function whoIs(phone){ const n = normPhone(phone); return everyone().find(p=>p.phone===n) || null; }
+function personByRef(m){
+  if(m.kind==='phone') return {kind:'phone', phone:normPhone(m.phone), name:fmtPhone(m.phone)};
+  const p = byId(state[m.kind+'s']||[], m.id);
+  return p && normPhone(p.phone).length===10 ? {kind:m.kind, id:p.id, name:p.name, phone:normPhone(p.phone), status:p.status||'active'} : null;
+}
+const BUILTIN_LISTS = [
+  ['drivers', 'All active drivers', ()=> everyone().filter(p=>p.kind==='driver' && p.status==='active')],
+  ['volunteers', 'All active volunteers', ()=> everyone().filter(p=>p.kind==='volunteer' && p.status==='active')],
+];
+function allLists(){ return [...BUILTIN_LISTS.map(([id,name])=>({id, name, builtin:true})), ...state.lists.slice().sort((a,b)=>a.name.localeCompare(b.name))]; }
+function listPeople(id){
+  const b = BUILTIN_LISTS.find(l=>l[0]===String(id)); if(b) return b[2]();
+  const l = byId(state.lists, id); return l ? (l.members||[]).map(personByRef).filter(Boolean) : [];
+}
+function listName(id){ return allLists().find(l=>String(l.id)===String(id))?.name || ''; }
+function fmtMsgTime(iso, withTime){
+  const d = new Date(iso), days = Math.round((localDay(new Date()) - localDay(d)) / 86400000);
+  const t = d.toLocaleTimeString('en-US',{hour:'numeric', minute:'2-digit'});
+  const day = days===0 ? '' : days===1 ? 'Yesterday' : d.toLocaleDateString('en-US',{month:'short', day:'numeric'});
+  return !day ? t : withTime ? `${day}, ${t}` : day;
+}
+function linkify(text){ return esc(text).replace(/https?:\/\/[^\s<]+/g, u=>`<a href="${u}" target="_blank" rel="noopener">${u}</a>`).replace(/\n/g,'<br>'); }
+
+function conversations(){
+  const byPhone = {};
+  for(const m of state.messages) (byPhone[m.phone] ||= []).push(m);
+  return Object.entries(byPhone).map(([phone, msgs])=>{
+    msgs.sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
+    return {phone, msgs, last: msgs[msgs.length-1], unread: msgs.filter(m=>m.direction==='in' && !m.read_at).length, who: whoIs(phone)};
+  }).sort((a,b)=> new Date(b.last.created_at) - new Date(a.last.created_at));
+}
+function unreadCount(){ return state.messages.filter(m=>m.direction==='in' && !m.read_at).length; }
+
+/* ---------- Posting calls to drivers ---------- */
+// every call that still needs a driver: pickups once a volunteer is set, returns once washing is finished
+function callsToPost(){
+  const out = [];
+  for(const r of state.requests){
+    if(['assigned','posted_pickup'].includes(r.status) && r.volunteer_id && !r.pickup_driver_id) out.push({r, leg:'pickup'});
+    if(['finished','posted_return'].includes(r.status) && !r.return_driver_id) out.push({r, leg:'return'});
+  }
+  return out.sort((a,b)=> new Date(a.r.requested_for||a.r.created_at) - new Date(b.r.requested_for||b.r.created_at));
+}
+// a call keeps the same number all day, so replies to an older post still match
+function todayKey(){ return ymd(new Date()); }
+function postNumber(r, leg){ return state.postNumbers.find(n=>n.day===todayKey() && n.request_id===r.id && n.leg===leg)?.number || null; }
+function openLeg(r){
+  if(['assigned','posted_pickup'].includes(r.status) && !r.pickup_driver_id) return 'pickup';
+  if(['finished','posted_return'].includes(r.status) && !r.return_driver_id) return 'return';
+  return null;
+}
+function dayNote(r){
+  if(!r.requested_for) return '';
+  const d = localDay(r.requested_for);
+  return d.getTime()===localDay(new Date()).getTime() ? '' : ` (${DAY_SHORT[d.getDay()]})`;
+}
+function postText(items){
+  const s = state.settings;
+  const lines = items.map(i=>{ const r = byId(state.requests, i.request_id); return `${i.n}) ${shortLegMessage(r, i.leg)}${dayNote(r)}`; });
+  return [s.post_header, ...lines].filter(x=>x && x.trim()).join('\n') + (s.post_footer ? `\n\n${s.post_footer}` : '');
+}
+function offersFor(r, leg){ return state.offers.filter(o=>o.request_id===r.id && o.leg===leg && o.status==='waiting'); }
+
+async function sendTexts(rows){
+  if(!rows.length) return [];
+  const status = state.settings.sms_connected ? 'queued' : 'not_sent';
+  const {data, error} = await sb.from('messages').insert(rows.map(r=>({direction:'out', status, sent_by: state.profile?.id, ...r, phone: normPhone(r.phone)}))).select();
+  if(error){ showToast(error.message); return []; }
+  state.messages.push(...data); return data;
+}
+function sentWord(n){ return state.settings.sms_connected ? (n===1 ? 'Sent' : `Sent to ${n}`) : 'Saved · texting not connected'; }
+async function markRead(phone){
+  const unread = state.messages.filter(m=>m.phone===phone && m.direction==='in' && !m.read_at);
+  if(!unread.length) return;
+  const now = new Date().toISOString();
+  await sb.from('messages').update({read_at: now}).eq('phone', phone).eq('direction', 'in');
+  unread.forEach(m=>m.read_at = now); render();
+}
+async function sendPost(){
+  const m = state.modal, d = state.draft, day = todayKey();
+  const fresh = m.items.filter(i=>i.isNew).map(i=>({day, number:i.n, request_id:i.request_id, leg:i.leg}));
+  if(fresh.length){
+    const {data, error} = await sb.from('post_numbers').insert(fresh).select();
+    if(error){
+      // someone else posted at the same moment; reload the numbers and start over
+      const {data:nums} = await sb.from('post_numbers').select('*').eq('day', day); state.postNumbers = nums||[];
+      state.modal = null; showToast('The numbers changed. Please open it again.'); return;
+    }
+    state.postNumbers.push(...data);
+  }
+  const people = listPeople(d.list);
+  const post = await createRow('posts', {body: d.text, kind: m.kind, recipients: people.length, created_by: state.profile?.id}); if(!post) return;
+  state.posts.unshift(post);
+  await sendTexts(people.map(p=>({phone:p.phone, body:d.text, post_id:post.id})));
+  // a posted call moves on to Posted
+  for(const i of m.items){
+    const r = byId(state.requests, i.request_id);
+    if(r && r.status === (i.leg==='return' ? 'finished' : 'assigned')) await updateRequest(r.id, {status: i.leg==='return' ? 'posted_return' : 'posted_pickup'});
+  }
+  state.modal = null; state.draft = {};
+  showToast(state.settings.sms_connected ? `Posted to ${people.length}` : 'Saved · texting not connected');
+}
+async function acceptOffer(id){
+  const o = byId(state.offers, id), r = o && byId(state.requests, o.request_id); if(!r) return;
+  const driver = (o.driver_id && byId(state.drivers, o.driver_id)) || state.drivers.find(d=>normPhone(d.phone)===o.phone);
+  if(!driver){
+    // a number that isn't a driver yet: add them first, then Accept again
+    state.modal = {type:'addDriver'}; state.draft = {}; state.modalStack = []; state.pendingPrefill = {phone: fmtPhone(o.phone), name: whoIs(o.phone)?.name || ''};
+    render(); return;
+  }
+  const n = postNumber(r, o.leg), others = offersFor(r, o.leg).filter(x=>x.id!==o.id);
+  await assignToRequest(r.id, o.leg==='return' ? 'return_driver_id' : 'pickup_driver_id', driver.id);
+  const now = new Date().toISOString(), me = state.profile?.id;
+  await sb.from('call_offers').update({status:'accepted', driver_id:driver.id, decided_by:me, decided_at:now}).eq('id', o.id);
+  for(const x of others) await sb.from('call_offers').update({status:'declined', decided_by:me, decided_at:now}).eq('id', x.id);
+  state.offers = state.offers.map(x=> x.id===o.id ? {...x, status:'accepted'} : others.includes(x) ? {...x, status:'declined'} : x);
+  const fresh = byId(state.requests, r.id);
+  await sendTexts([
+    {phone:o.phone, body: driverMessage(fresh, o.leg), request_id:r.id},
+    ...others.map(x=>({phone:x.phone, body:`Sorry, ${n ? '#'+n : 'this call'} was already taken. Thank you!`, request_id:r.id})),
+  ]);
+  showToast(`${driver.name} got ${n ? '#'+n : '#'+r.id}`);
+}
+async function saveList(){
+  const d = state.draft, id = state.modal.id, name = (d.name||'').trim();
+  if(!name){ showToast('Name is required'); return; }
+  const payload = {name, members: d.members.filter(m=>personByRef(m)), updated_at: new Date().toISOString()};
+  const saved = id ? await updateRow('contact_lists', id, payload) : await createRow('contact_lists', payload); if(!saved) return;
+  state.lists = state.lists.filter(l=>l.id!==saved.id).concat(saved); state.modal = null; state.draft = {}; showToast('Saved');
+}
+async function saveContact(){
+  const d = state.draft, id = state.modal.id, name = (d.name||'').trim(), phone = normPhone(d.phone);
+  if(!name){ showToast('Name is required'); return; }
+  if(phone.length !== 10){ showToast('Enter a 10-digit phone number'); return; }
+  const payload = {name, phone: fmtPhone(phone), note: (d.note||'').trim() || null};
+  const saved = id ? await updateRow('contacts', id, payload) : await createRow('contacts', payload); if(!saved) return;
+  state.contacts = state.contacts.filter(c=>c.id!==saved.id).concat(saved).sort((a,b)=>a.name.localeCompare(b.name));
+  state.modal = null; state.draft = {}; showToast('Saved');
+}
+
+/* ---------- Messages pages ---------- */
+function messagesPage(){
+  const tabs = [['inbox','Inbox', unreadCount()], ['post','Post', state.offers.filter(o=>o.status==='waiting').length], ['lists','Lists', 0], ['contacts','Contacts', 0]];
+  const view = {inbox: inboxView, post: postView, lists: listsView, contacts: contactsView}[state.msgTab] || inboxView;
+  return `${state.settings.sms_connected ? '' : `<div style="margin-bottom:10px;"><span class="tag gray">${icon('alert')} Texting not connected</span></div>`}
+    <div class="tabs">${tabs.map(([k,l,n])=>`<div class="tab ${state.msgTab===k?'active':''}" data-action="msg-tab" data-tab="${k}">${l}${n?`<span class="count">${n}</span>`:''}</div>`).join('')}</div>
+    ${view()}`;
+}
+// letters only, so "Shimon (warehouse)" shows SW
+function avatarFor(who){ return `<div class="conv-avatar">${who && who.kind!=='phone' ? esc(initials(who.name.replace(/[^\p{L}\s]/gu, ' '))) : icon('user')}</div>`; }
+function convRow(c){
+  const firstLine = (c.last.body.split('\n').find(l=>l.trim()) || '');
+  return `<div class="conv-row ${state.msgPhone===c.phone?'active':''}" data-action="open-thread" data-phone="${c.phone}">
+    ${avatarFor(c.who)}
+    <div class="conv-main">
+      <div class="conv-top"><b>${esc(c.who?.name || fmtPhone(c.phone))}</b><span class="sub">${fmtMsgTime(c.last.created_at)}</span></div>
+      <div class="conv-snip ${c.unread?'unread':''}">${c.last.direction==='out' ? 'You: ' : ''}${esc(firstLine)}</div>
+    </div>
+    ${c.unread ? `<span class="unread-dot">${c.unread}</span>` : ''}
+  </div>`;
+}
+function inboxView(){
+  const q = state.msgSearch.trim().toLowerCase(), digits = q.replace(/\D/g,'');
+  const convs = conversations().filter(c=> !q || (c.who?.name||'').toLowerCase().includes(q) || (digits.length>=3 && c.phone.includes(digits)));
+  return `<div class="inbox ${state.msgPhone ? 'has-thread' : ''}">
+    <div class="conv-list">
+      <div class="toolbar"><div class="search-box">${icon('search')}<input placeholder="Search…" value="${esc(state.msgSearch)}" data-live="msgSearch"></div>
+        <button class="btn btn-primary btn-sm btn-auto" data-action="new-message">${icon('plus')} New</button></div>
+      ${convs.length ? convs.map(convRow).join('') : `<div class="empty">${icon('chat')}<div>No messages</div></div>`}
+    </div>
+    ${state.msgPhone ? threadView(state.msgPhone) : `<div class="thread thread-empty"><div class="empty">${icon('chat')}</div></div>`}
+  </div>`;
+}
+function bubble(m){
+  const by = m.direction==='out' ? profileName(m.sent_by) : '';
+  const st = m.direction!=='out' ? '' : m.status==='not_sent' ? ' · <span class="ns">Not sent</span>' : m.status==='failed' ? ' · <span class="ns">Failed</span>' : m.status==='delivered' ? ' · Delivered' : '';
+  return `<div class="bubble ${m.direction}"><div class="btext">${linkify(m.body)}</div>
+    <div class="bmeta">${m.post_id ? 'Post · ' : ''}${fmtMsgTime(m.created_at, true)}${by ? ` · ${esc(by)}` : ''}${st}</div></div>`;
+}
+function threadView(phone){
+  const who = whoIs(phone);
+  const msgs = state.messages.filter(m=>m.phone===phone).sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
+  const name = !who ? esc(fmtPhone(phone)) : who.kind==='contact' ? esc(who.name) : `<span class="name-link" data-nav="${who.kind}" data-id="${who.id}">${esc(who.name)}</span>`;
+  return `<div class="thread">
+    <div class="thread-head">
+      <button class="icon-btn thread-back" data-action="close-thread" aria-label="Back">${icon('back')}</button>
+      ${avatarFor(who)}
+      <div class="conv-main"><b>${name}</b><div class="sub">${who ? kindLabel(who.kind)+' · ' : ''}${esc(fmtPhone(phone))}</div></div>
+      <a class="btn btn-outline btn-sm btn-auto" href="tel:${phone}">${icon('phone')} Call</a>
+    </div>
+    <div class="bubbles">${msgs.map(bubble).join('') || `<div class="empty">${icon('chat')}</div>`}</div>
+    <div class="compose"><textarea id="msg-compose" rows="2">${esc(state.msgCompose[phone]||'')}</textarea>
+      <button class="btn btn-primary btn-auto" data-action="send-thread" data-phone="${phone}">Send</button></div>
+  </div>`;
+}
+function offerRow(o, withCall){
+  const r = byId(state.requests, o.request_id), who = whoIs(o.phone), n = r && postNumber(r, o.leg);
+  const isDriver = (o.driver_id && byId(state.drivers, o.driver_id)) || state.drivers.some(d=>normPhone(d.phone)===o.phone);
+  return `<div class="offer-row">
+    ${withCall ? `<span class="num-badge">${n || '–'}</span>` : ''}
+    <div class="conv-main"><b>${esc(who?.name || fmtPhone(o.phone))}</b>${withCall && r ? ` <span class="sub">${esc(shortLegMessage(r, o.leg))}</span>` : ''}
+      <div class="sub">${fmtMsgTime(o.created_at, true)}${who ? '' : ` · ${esc(fmtPhone(o.phone))}`}</div></div>
+    <button class="btn btn-primary btn-sm btn-auto" data-action="accept-offer" data-id="${o.id}">${isDriver ? 'Accept' : 'Add driver'}</button>
+  </div>`;
+}
+function postView(){
+  const calls = callsToPost(), fresh = calls.filter(c=>!postNumber(c.r, c.leg));
+  const offers = state.offers.filter(o=>o.status==='waiting').sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
+  return `<div class="btn-row" style="margin-bottom:4px;">
+      <button class="btn btn-primary" data-action="open-post" data-kind="new" ${fresh.length?'':'disabled'}>${icon('plus')} Post new${fresh.length ? ` · ${fresh.length}` : ''}</button>
+      <button class="btn btn-outline" data-action="open-post" data-kind="repost" ${calls.length?'':'disabled'}>${icon('repeat')} Repost open${calls.length ? ` · ${calls.length}` : ''}</button>
+    </div>
+    ${offers.length ? `<div class="date-group-label">Replies</div><div class="offer-box">${offers.map(o=>offerRow(o, true)).join('')}</div>` : ''}
+    <div class="date-group-label">Waiting for a driver</div>
+    ${calls.length ? `<div class="row-list">${calls.map(({r, leg})=>{ const n = postNumber(r, leg);
+        return `<div class="req-row" data-action="go-request" data-id="${r.id}">${n ? `<span class="num-badge">${n}</span>` : `<span class="num-badge new">New</span>`}
+          <span class="row-text"><b>${esc(shortLegMessage(r, leg))}</b> <span class="sub">${leg==='return' ? 'Return' : 'Pickup'} · #${r.id}</span></span>
+          <span class="sub">${esc(dayLabel(r.requested_for || r.created_at))}</span></div>`; }).join('')}</div>`
+      : `<div class="empty" style="padding:14px;">&mdash;</div>`}
+    ${state.posts.length ? `<div class="date-group-label">Sent</div><div class="list-grid">${state.posts.slice(0, 10).map(p=>`<div class="section-card post-card">
+        <div class="conv-top"><b>${p.kind==='repost' ? 'Repost' : 'Post'} · ${fmtMsgTime(p.created_at, true)}</b><span class="sub">${p.recipients} ${p.recipients===1 ? 'person' : 'people'}</span></div>
+        ${profileName(p.created_by) ? `<div class="sub">${esc(profileName(p.created_by))}</div>` : ''}
+        <div class="post-body">${esc(p.body)}</div></div>`).join('')}</div>` : ''}`;
+}
+function listsView(){
+  const card = l => { const people = listPeople(l.id);
+    return `<div class="section-card list-box">
+      <div class="conv-top"><b>${esc(l.name)}</b>${l.builtin ? '' : `<button class="icon-only" title="Edit list" data-action="open-list-form" data-id="${l.id}">${ICON_EDIT}</button>`}</div>
+      <div class="sub">${people.length} ${people.length===1 ? 'person' : 'people'}${people.length ? ' · ' + esc(people.slice(0,3).map(p=>p.name).join(', ')) + (people.length>3 ? '…' : '') : ''}</div>
+      <button class="btn btn-outline btn-sm btn-auto" style="margin-top:10px;" data-action="new-message" data-list="${l.id}" ${people.length?'':'disabled'}>${icon('chat')} Text</button>
+    </div>`; };
+  return `<div class="toolbar" style="justify-content:flex-end;"><button class="btn btn-primary btn-sm btn-auto" data-action="open-list-form">${icon('plus')} New list</button></div>
+    <div class="list-grid">${allLists().map(card).join('')}</div>`;
+}
+function contactsView(){
+  const q = state.msgContactSearch.trim().toLowerCase(), digits = q.replace(/\D/g,''), kind = state.msgContactKind;
+  const all = everyone();
+  const list = all.filter(p=>(!kind || p.kind===kind) && (!q || p.name.toLowerCase().includes(q) || (digits.length>=3 && p.phone.includes(digits))))
+    .sort((a,b)=>a.name.localeCompare(b.name));
+  return `<div class="toolbar"><div class="search-box">${icon('search')}<input placeholder="Search…" value="${esc(state.msgContactSearch)}" data-live="msgContactSearch"></div>
+      <button class="btn btn-primary btn-sm btn-auto" data-action="open-contact-form">${icon('plus')} Contact</button></div>
+    <div class="chip-row" style="margin-bottom:12px;">
+      <div class="chip ${!kind?'active':''}" data-action="msg-contact-kind" data-kind="">All · ${all.length}</div>
+      ${PEOPLE_KINDS.map(([k,l])=>`<div class="chip ${kind===k?'active':''}" data-action="msg-contact-kind" data-kind="${k}">${l}s · ${all.filter(p=>p.kind===k).length}</div>`).join('')}
+    </div>
+    ${list.length ? `<div class="list-grid">${list.map(p=>`<div class="conv-row" data-action="open-thread" data-phone="${p.phone}">
+        ${avatarFor(p)}
+        <div class="conv-main"><b>${esc(p.name)}</b><div class="sub">${kindLabel(p.kind)} · ${telLink(fmtPhone(p.phone))}</div></div>
+        ${p.kind==='contact' ? `<button class="icon-only" title="Edit contact" data-action="open-contact-form" data-id="${p.id}">${ICON_EDIT}</button>` : ''}
+      </div>`).join('')}</div>` : `<div class="empty">&mdash;</div>`}`;
+}
+
+/* ---------- Messages windows ---------- */
+function draftRecipients(d){
+  const seen = new Map(), add = p=>{ if(p && p.phone && !seen.has(p.phone)) seen.set(p.phone, p); };
+  (d.lists||[]).forEach(id=>listPeople(id).forEach(add));
+  (d.to||[]).forEach(t=>add(personByRef(t)));
+  return [...seen.values()];
+}
+function peopleMatches(q, skip){
+  const ql = q.toLowerCase(), digits = q.replace(/\D/g,'');
+  return everyone().filter(p=>(p.name.toLowerCase().includes(ql) || (digits.length>=3 && p.phone.includes(digits))) && !skip(p)).slice(0, 15);
+}
+function personPick(p, action){
+  return `<div class="picker-item" data-action="${action}" data-kind="${p.kind}" data-id="${p.id}"><div><b>${esc(p.name)}</b><div class="sub">${kindLabel(p.kind)} · ${esc(fmtPhone(p.phone))}</div></div><span class="sub">Add</span></div>`;
+}
+function newMessageModal(){
+  const d = state.draft, q = (state.pickerSearch.msg||'').trim(), digits = q.replace(/\D/g,'');
+  const people = draftRecipients(d);
+  const chips = [
+    ...(d.lists||[]).map(id=>`<span class="member-chip">${esc(listName(id))} · ${listPeople(id).length}<a data-action="msg-remove" data-list="${id}">&times;</a></span>`),
+    ...(d.to||[]).map((t,i)=>`<span class="member-chip">${esc(personByRef(t)?.name || '')}<a data-action="msg-remove" data-i="${i}">&times;</a></span>`),
+  ].join('');
+  let results = '';
+  if(q){
+    const lists = allLists().filter(l=>l.name.toLowerCase().includes(q.toLowerCase()) && !(d.lists||[]).includes(String(l.id)));
+    const ppl = peopleMatches(q, p=>(d.to||[]).some(t=>t.kind===p.kind && String(t.id)===String(p.id)));
+    results = `<div class="picker-list">
+      ${lists.map(l=>`<div class="picker-item" data-action="msg-add" data-list="${l.id}"><div><b>${esc(l.name)}</b><div class="sub">List · ${listPeople(l.id).length}</div></div><span class="sub">Add</span></div>`).join('')}
+      ${ppl.map(p=>personPick(p, 'msg-add')).join('')}
+      ${normPhone(digits).length===10 && !ppl.length ? `<div class="picker-item picker-add" data-action="msg-add" data-phone="${normPhone(digits)}">+ ${esc(fmtPhone(digits))}</div>` : ''}
+      ${!lists.length && !ppl.length && normPhone(digits).length!==10 ? `<div class="picker-item sub">No match for "${esc(q)}"</div>` : ''}
+    </div>`;
+  }
+  return `<h2>New message</h2>
+    <label>To</label>
+    ${chips ? `<div class="chip-row" style="margin-bottom:8px;">${chips}</div>` : ''}
+    <div class="search-box">${icon('search')}<input placeholder="Name, list or phone number" value="${esc(state.pickerSearch.msg||'')}" data-live="pickerSearch.msg"></div>
+    ${results}
+    <div class="field" style="margin-top:12px;"><label>Message</label><textarea data-bind="text" rows="4">${esc(d.text||'')}</textarea></div>
+    <div class="btn-row"><button class="btn btn-outline" data-action="close-modal">Cancel</button>
+      <button class="btn btn-primary" data-action="send-message" ${people.length?'':'disabled'}>Send${people.length ? ` to ${people.length}` : ''}</button></div>`;
+}
+function postPreviewModal(){
+  const m = state.modal, d = state.draft, people = listPeople(d.list);
+  return `<h2>${m.kind==='new' ? 'Post new calls' : 'Repost open calls'}</h2>
+    <label>Send to</label>
+    <div class="chip-row" style="margin-bottom:12px;">${allLists().map(l=>`<div class="chip ${String(d.list)===String(l.id)?'active':''}" data-action="set-draft" data-field="list" data-value="${l.id}">${esc(l.name)} · ${listPeople(l.id).length}</div>`).join('')}</div>
+    <div class="field"><label>Message</label><textarea data-bind="text" rows="${Math.min(14, (d.text||'').split('\n').length + 1)}">${esc(d.text||'')}</textarea></div>
+    <div class="btn-row"><button class="btn btn-outline" data-action="close-modal">Cancel</button>
+      <button class="btn btn-primary" data-action="send-post" ${people.length?'':'disabled'}>Send to ${people.length}</button></div>`;
+}
+function listFormModal(){
+  const d = state.draft, q = (state.pickerSearch.list||'').trim();
+  const members = d.members.map(personByRef);
+  const res = q ? peopleMatches(q, p=>d.members.some(m=>m.kind===p.kind && String(m.id)===String(p.id))) : [];
+  return `<h2>${state.modal.id ? 'Edit list' : 'New list'}</h2>
+    <div class="field"><label>Name</label><input data-bind="name" value="${esc(d.name||'')}"></div>
+    <label>People · ${members.filter(Boolean).length}</label>
+    ${members.some(Boolean) ? `<div class="chip-row" style="margin-bottom:8px;">${members.map((p,i)=> p ? `<span class="member-chip">${esc(p.name)}<a data-action="list-remove-member" data-i="${i}">&times;</a></span>` : '').join('')}</div>` : ''}
+    <div class="search-box">${icon('search')}<input placeholder="Name or phone number" value="${esc(state.pickerSearch.list||'')}" data-live="pickerSearch.list"></div>
+    ${res.length ? `<div class="picker-list">${res.map(p=>personPick(p, 'list-add-member')).join('')}</div>` : q ? `<div class="picker-list"><div class="picker-item sub">No match for "${esc(q)}"</div></div>` : ''}
+    <div class="btn-row" style="margin-top:14px;">${state.modal.id ? `<button class="btn btn-danger" data-action="delete-list" data-id="${state.modal.id}">Delete</button>` : `<button class="btn btn-outline" data-action="close-modal">Cancel</button>`}
+      <button class="btn btn-primary" data-action="save-list">Save</button></div>`;
+}
+function contactFormModal(){
+  const d = state.draft;
+  return `<h2>${state.modal.id ? 'Edit contact' : 'New contact'}</h2>
+    <div class="field"><label>Name</label><input data-bind="name" value="${esc(d.name||'')}"></div>
+    <div class="field"><label>Phone</label><input data-bind="phone" type="tel" value="${esc(d.phone||'')}"></div>
+    <div class="field"><label>Note</label><textarea data-bind="note" rows="2">${esc(d.note||'')}</textarea></div>
+    <div class="btn-row">${state.modal.id ? `<button class="btn btn-danger" data-action="delete-contact" data-id="${state.modal.id}">Delete</button>` : `<button class="btn btn-outline" data-action="close-modal">Cancel</button>`}
+      <button class="btn btn-primary" data-action="save-contact">Save</button></div>`;
+}
+
+const routes = { messages: messagesPage, dashboard, dispatch, clients, volunteers, drivers, recurring, history, settings, client: clientDetail, volunteer: volunteerDetail, driver: driverDetail };
 
 /* ============================= Modals ============================= */
 function modalHtml(){
@@ -1519,6 +1926,7 @@ function modalHtml(){
     recurringForm: recurringFormModal,
     occurrence: occurrenceModal,
     sendInvite: sendInviteModal,
+    newMessage: newMessageModal, postPreview: postPreviewModal, listForm: listFormModal, contactForm: contactFormModal,
   };
   const fn = map[m.type];
   return `<div class="modal-overlay" data-action="overlay-click"><div class="modal">
@@ -1885,6 +2293,77 @@ function initEvents(){
         if(state.modal.type==='newRequest'){ state.volDays = []; state.volSort = 'rotation'; }
         render(); break;
       case 'close-modal': closeModal(); break;
+      case 'msg-tab': state.msgTab = actionEl.getAttribute('data-tab'); render(); break;
+      case 'open-thread': {
+        const phone = actionEl.getAttribute('data-phone');
+        state.route = 'messages'; state.msgTab = 'inbox'; state.msgPhone = phone; state.modal = null; state.menuOpen = false;
+        render(); await markRead(phone); break;
+      }
+      case 'close-thread': state.msgPhone = null; render(); break;
+      case 'send-thread': {
+        const phone = actionEl.getAttribute('data-phone'), body = (document.getElementById('msg-compose')?.value||'').trim();
+        if(!body) break;
+        if((await sendTexts([{phone, body}])).length){ state.msgCompose[phone] = ''; showToast(sentWord(1)); }
+        break;
+      }
+      case 'new-message': {
+        const l = actionEl.getAttribute('data-list');
+        state.modal = {type:'newMessage'}; state.draft = {to:[], lists: l ? [l] : [], text:''}; state.pickerSearch = {}; render(); break;
+      }
+      case 'msg-add': {
+        const d = state.draft, l = actionEl.getAttribute('data-list'), ph = actionEl.getAttribute('data-phone');
+        if(l) d.lists.push(l); else if(ph) d.to.push({kind:'phone', phone:ph}); else d.to.push({kind:actionEl.getAttribute('data-kind'), id:actionEl.getAttribute('data-id')});
+        state.pickerSearch.msg = ''; render(); break;
+      }
+      case 'msg-remove': {
+        const d = state.draft, l = actionEl.getAttribute('data-list');
+        if(l) d.lists = d.lists.filter(x=>x!==l); else d.to.splice(Number(actionEl.getAttribute('data-i')), 1);
+        render(); break;
+      }
+      case 'send-message': {
+        const people = draftRecipients(state.draft), body = (state.draft.text||'').trim();
+        if(!body){ showToast('Type a message'); break; }
+        if(!people.length) break;
+        if(!(await sendTexts(people.map(p=>({phone:p.phone, body})))).length) break;
+        state.modal = null; state.draft = {}; state.route = 'messages'; state.msgTab = 'inbox';
+        if(people.length===1) state.msgPhone = people[0].phone;
+        showToast(sentWord(people.length)); break;
+      }
+      case 'open-post': {
+        const kind = actionEl.getAttribute('data-kind'), calls = callsToPost();
+        let next = Math.max(0, ...state.postNumbers.filter(n=>n.day===todayKey()).map(n=>n.number));
+        const items = (kind==='new' ? calls.filter(c=>!postNumber(c.r, c.leg)) : calls)
+          .map(c=>{ const n = postNumber(c.r, c.leg); return {request_id:c.r.id, leg:c.leg, n: n || ++next, isNew: !n}; })
+          .sort((a,b)=>a.n-b.n);
+        state.modal = {type:'postPreview', kind, items}; state.draft = {text: postText(items), list:'drivers'}; render(); break;
+      }
+      case 'send-post': await sendPost(); break;
+      case 'accept-offer': await acceptOffer(actionEl.getAttribute('data-id')); break;
+      case 'open-list-form': {
+        const id = actionEl.getAttribute('data-id'), l = id && byId(state.lists, id);
+        state.modal = {type:'listForm', id: id||null}; state.draft = l ? {name:l.name, members:[...(l.members||[])]} : {name:'', members:[]}; state.pickerSearch = {};
+        render(); break;
+      }
+      case 'list-add-member': state.draft.members.push({kind:actionEl.getAttribute('data-kind'), id:actionEl.getAttribute('data-id')}); state.pickerSearch.list = ''; render(); break;
+      case 'list-remove-member': state.draft.members.splice(Number(actionEl.getAttribute('data-i')), 1); render(); break;
+      case 'save-list': await saveList(); break;
+      case 'delete-list': {
+        const id = actionEl.getAttribute('data-id');
+        if(confirm('Delete this list?') && await deleteRow('contact_lists', id)){ state.lists = state.lists.filter(l=>String(l.id)!==id); state.modal = null; render(); }
+        break;
+      }
+      case 'open-contact-form': {
+        const id = actionEl.getAttribute('data-id'), c = id && byId(state.contacts, id);
+        state.modal = {type:'contactForm', id: id||null}; state.draft = c ? {name:c.name, phone:c.phone, note:c.note||''} : {}; render(); break;
+      }
+      case 'save-contact': await saveContact(); break;
+      case 'delete-contact': {
+        const id = actionEl.getAttribute('data-id');
+        if(confirm('Delete this contact?') && await deleteRow('contacts', id)){ state.contacts = state.contacts.filter(c=>String(c.id)!==id); state.modal = null; render(); }
+        break;
+      }
+      case 'msg-contact-kind': state.msgContactKind = actionEl.getAttribute('data-kind'); render(); break;
+      case 'save-postcalls-settings': await updateSettings({post_header: document.getElementById('set-post-header').value, post_footer: document.getElementById('set-post-footer').value}); showToast('Saved'); render(); break;
       case 'toggle-vol-day': {
         const day = Number(actionEl.getAttribute('data-day'));
         state.volDays = state.volDays.includes(day) ? state.volDays.filter(d=>d!==day) : [...state.volDays, day].sort();
@@ -2115,6 +2594,7 @@ function initEvents(){
     const bindEl = e.target.closest('[data-bind]');
     if(bindEl){ state.draft[bindEl.getAttribute('data-bind')] = bindEl.value; }
     if(e.target.id && e.target.id.startsWith('auth-')) state.authForm[e.target.id] = e.target.value;
+    if(e.target.id === 'msg-compose') state.msgCompose[state.msgPhone] = e.target.value;
   });
   document.addEventListener('change', (e)=>{
     if(e.target.closest('[data-live]')) return;
