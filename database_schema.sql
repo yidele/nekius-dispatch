@@ -479,3 +479,11 @@ alter table recurring_requests add column if not exists day_people jsonb not nul
 --   app_settings.post_header / post_footer  first and last line of a post
 -- All tables: row-level security, any known user (is_known_user()).
 -- ============================================================
+
+-- ============================================================
+-- Test mode + incoming texts (migration messaging_receive_and_test_mode)
+--   app_settings.sms_test: everything works as if connected, nothing leaves the app (messages.status = 'test')
+--   receive_text(phone, body): saves an incoming text; a reply made only of call numbers ("2", "#3", "2 and 3",
+--   "I'll take 4") creates a waiting call_offer for each open call, and an automatic answer for a taken or
+--   unknown number. The texting company's incoming-text hook will call this same function.
+-- ============================================================

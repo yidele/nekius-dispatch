@@ -357,6 +357,9 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .compose{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);align-items:flex-end;}
 .compose textarea{flex:1;margin:0;resize:none;}
 .thread-empty{display:none;}
+.test-reply{border-top:1.5px dashed var(--accent);background:var(--accent-light);}
+.test-reply label{margin:8px 12px 0;color:var(--accent-ink);}
+.test-reply .compose{border-top:none;padding-top:4px;}
 .inbox.has-thread .conv-list{display:none;}
 .offer-box{border:1.5px solid var(--accent);background:var(--accent-light);border-radius:12px;padding:8px 12px;margin-top:10px;}
 .offer-box .role{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--accent-ink);}
@@ -1650,12 +1653,30 @@ function offersFor(r, leg){ return state.offers.filter(o=>o.request_id===r.id &&
 
 async function sendTexts(rows){
   if(!rows.length) return [];
-  const status = state.settings.sms_connected ? 'queued' : 'not_sent';
+  const status = outStatus();
   const {data, error} = await sb.from('messages').insert(rows.map(r=>({direction:'out', status, sent_by: state.profile?.id, ...r, phone: normPhone(r.phone)}))).select();
   if(error){ showToast(error.message); return []; }
   state.messages.push(...data); return data;
 }
-function sentWord(n){ return state.settings.sms_connected ? (n===1 ? 'Sent' : `Sent to ${n}`) : 'Saved · texting not connected'; }
+// test mode works like the real thing, except nothing leaves the app
+function testMode(){ return !state.settings.sms_connected && state.settings.sms_test; }
+function outStatus(){ return state.settings.sms_connected ? 'queued' : testMode() ? 'test' : 'not_sent'; }
+function sentWord(n){ return state.settings.sms_connected || testMode() ? (n===1 ? 'Sent' : `Sent to ${n}`) : 'Saved · texting not connected'; }
+async function reloadMessaging(){
+  const [msg, off] = await Promise.all([
+    sb.from('messages').select('*').order('created_at',{ascending:false}).limit(2000),
+    sb.from('call_offers').select('*').eq('status','waiting'),
+  ]);
+  if(msg.data) state.messages = msg.data; if(off.data) state.offers = off.data;
+}
+// test mode: type what this person would text back; it is handled exactly like a real incoming text
+async function testReply(phone){
+  const el = document.getElementById('test-reply'), body = (el?.value||'').trim(); if(!body) return;
+  const {data, error} = await sb.rpc('receive_text', {p_phone: phone, p_body: body});
+  if(error){ showToast(error.message); return; }
+  state.testReply = ''; await reloadMessaging(); await markRead(phone); // it's on screen, so it's read
+  showToast(data?.offers ? `Asked for ${data.offers===1 ? 'a call' : data.offers+' calls'} · see Post` : data?.replies ? 'Answered automatically' : 'Received');
+}
 async function markRead(phone){
   const unread = state.messages.filter(m=>m.phone===phone && m.direction==='in' && !m.read_at);
   if(!unread.length) return;
@@ -1685,7 +1706,7 @@ async function sendPost(){
     if(r && r.status === (i.leg==='return' ? 'finished' : 'assigned')) await updateRequest(r.id, {status: i.leg==='return' ? 'posted_return' : 'posted_pickup'});
   }
   state.modal = null; state.draft = {};
-  showToast(state.settings.sms_connected ? `Posted to ${people.length}` : 'Saved · texting not connected');
+  showToast(state.settings.sms_connected || testMode() ? `Posted to ${people.length}` : 'Saved · texting not connected');
 }
 async function acceptOffer(id){
   const o = byId(state.offers, id), r = o && byId(state.requests, o.request_id); if(!r) return;
@@ -1729,7 +1750,7 @@ async function saveContact(){
 function messagesPage(){
   const tabs = [['inbox','Inbox', unreadCount()], ['post','Post', state.offers.filter(o=>o.status==='waiting').length], ['lists','Lists', 0], ['contacts','Contacts', 0]];
   const view = {inbox: inboxView, post: postView, lists: listsView, contacts: contactsView}[state.msgTab] || inboxView;
-  return `${state.settings.sms_connected ? '' : `<div style="margin-bottom:10px;"><span class="tag gray">${icon('alert')} Texting not connected</span></div>`}
+  return `${state.settings.sms_connected ? '' : `<div style="margin-bottom:10px;"><span class="tag ${testMode() ? 'mash' : 'gray'}">${icon('alert')} ${testMode() ? 'Test mode · nothing is texted' : 'Texting not connected'}</span></div>`}
     <div class="tabs">${tabs.map(([k,l,n])=>`<div class="tab ${state.msgTab===k?'active':''}" data-action="msg-tab" data-tab="${k}">${l}${n?`<span class="count">${n}</span>`:''}</div>`).join('')}</div>
     ${view()}`;
 }
@@ -1760,9 +1781,9 @@ function inboxView(){
 }
 function bubble(m){
   const by = m.direction==='out' ? profileName(m.sent_by) : '';
-  const st = m.direction!=='out' ? '' : m.status==='not_sent' ? ' · <span class="ns">Not sent</span>' : m.status==='failed' ? ' · <span class="ns">Failed</span>' : m.status==='delivered' ? ' · Delivered' : '';
+  const st = m.direction!=='out' ? '' : m.status==='test' ? ' · Test' : m.status==='not_sent' ? ' · <span class="ns">Not sent</span>' : m.status==='failed' ? ' · <span class="ns">Failed</span>' : m.status==='delivered' ? ' · Delivered' : '';
   return `<div class="bubble ${m.direction}"><div class="btext">${linkify(m.body)}</div>
-    <div class="bmeta">${m.post_id ? 'Post · ' : ''}${fmtMsgTime(m.created_at, true)}${by ? ` · ${esc(by)}` : ''}${st}</div></div>`;
+    <div class="bmeta">${m.post_id ? 'Post · ' : ''}${fmtMsgTime(m.created_at, true)}${m.direction==='out' ? ` · ${esc(by || 'Automatic')}` : ''}${st}</div></div>`;
 }
 function threadView(phone){
   const who = whoIs(phone);
@@ -1778,6 +1799,9 @@ function threadView(phone){
     <div class="bubbles">${msgs.map(bubble).join('') || `<div class="empty">${icon('chat')}</div>`}</div>
     <div class="compose"><textarea id="msg-compose" rows="2">${esc(state.msgCompose[phone]||'')}</textarea>
       <button class="btn btn-primary btn-auto" data-action="send-thread" data-phone="${phone}">Send</button></div>
+    ${testMode() ? `<div class="test-reply"><label>Test reply from ${esc(who?.name || fmtPhone(phone))}</label>
+      <div class="compose"><textarea id="test-reply" rows="1">${esc(state.testReply||'')}</textarea>
+      <button class="btn btn-outline btn-auto" data-action="test-reply" data-phone="${phone}">Receive</button></div></div>` : ''}
   </div>`;
 }
 function offerRow(o, withCall){
@@ -2338,6 +2362,7 @@ function initEvents(){
         state.modal = {type:'postPreview', kind, items}; state.draft = {text: postText(items), list:'drivers'}; render(); break;
       }
       case 'send-post': await sendPost(); break;
+      case 'test-reply': await testReply(actionEl.getAttribute('data-phone')); break;
       case 'accept-offer': await acceptOffer(actionEl.getAttribute('data-id')); break;
       case 'open-list-form': {
         const id = actionEl.getAttribute('data-id'), l = id && byId(state.lists, id);
@@ -2595,6 +2620,7 @@ function initEvents(){
     if(bindEl){ state.draft[bindEl.getAttribute('data-bind')] = bindEl.value; }
     if(e.target.id && e.target.id.startsWith('auth-')) state.authForm[e.target.id] = e.target.value;
     if(e.target.id === 'msg-compose') state.msgCompose[state.msgPhone] = e.target.value;
+    if(e.target.id === 'test-reply') state.testReply = e.target.value;
   });
   document.addEventListener('change', (e)=>{
     if(e.target.closest('[data-live]')) return;
