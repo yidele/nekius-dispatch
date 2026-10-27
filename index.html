@@ -191,6 +191,7 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .msg-preview{white-space:pre-wrap;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:13.5px;color:var(--ink-soft);}
 .send-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
 .send-grid .btn{text-decoration:none;}
+.add-link{display:inline-block;margin:6px 0 2px;font-size:13px;font-weight:600;color:var(--primary);cursor:pointer;}
 .added-on{font-size:11px;color:var(--ink-faint);font-weight:600;margin:10px 0 -4px 2px;}
 /* ---------- layout helpers (one column on phones) ---------- */
 .side-nav{display:none;}
@@ -440,6 +441,7 @@ function render(){
   let pos = null; try{ pos = a.selectionStart; }catch(_){}
   const r = routes[state.route] || routes.dashboard;
   document.getElementById('app').innerHTML = layout(r());
+  if(state.session && state.profile && !state.loading) saveLocation();
   if(key){
     const el = document.querySelector(key[0]==='id' ? '#'+CSS.escape(key[1]) : `[${key[0]}="${key[1]}"]`);
     if(el){
@@ -451,6 +453,17 @@ function render(){
   afterRender();
 }
 
+// the page you're on is kept in the web address (and the open tabs in this browser tab), so a refresh opens the same place
+function saveLocation(){
+  const h = '#' + state.route + (state.routeId ? '/' + state.routeId : '');
+  try{ if(location.hash !== h) history.replaceState(null, '', h); }catch(_){}
+  try{ sessionStorage.setItem('kvisa-view', JSON.stringify({dispatchTab: state.dispatchTab, msgTab: state.msgTab, msgPhone: state.msgPhone})); }catch(_){}
+}
+function restoreLocation(){
+  const [route, id] = decodeURIComponent(location.hash.slice(1)).split('/');
+  if(routes[route] && (route !== 'settings' || isEditor())){ state.route = route; state.routeId = id || null; }
+  try{ const v = JSON.parse(sessionStorage.getItem('kvisa-view') || '{}'); for(const k of ['dispatchTab','msgTab','msgPhone']) if(k in v) state[k] = v[k]; }catch(_){}
+}
 function afterRender(){
   // a conversation opens at its newest message
   const bubbles = document.querySelector('.bubbles'); if(bubbles) bubbles.scrollTop = bubbles.scrollHeight;
@@ -537,9 +550,9 @@ function streetOnly(address){
 }
 function shortLegMessage(req, leg){
   const client = byId(state.clients, req.client_id);
-  const vol = byId(state.volunteers, req.volunteer_id);
+  const vol = byId(state.volunteers, req.volunteer_id), vol2 = byId(state.volunteers, req.volunteer2_id);
   const clientSt = streetOnly(client?.address);
-  const volSt = streetOnly(vol?.address);
+  const volSt = [vol, vol2].filter(Boolean).map(v=>streetOnly(v.address)).join(' & ');
   const t = state.settings.post_message_template || {before:'',between:' to ',after:''};
   const [from,to] = leg === 'return' ? [volSt, clientSt] : [clientSt, volSt];
   return `${t.before||''}${from}${t.between||' to '}${to}${t.after||''}`;
@@ -558,13 +571,16 @@ function driverMessage(req, leg){
   const vol = byId(state.volunteers, req.volunteer_id);
   const driver = byId(state.drivers, leg==='return' ? req.return_driver_id : req.pickup_driver_id);
   const tmpl = leg==='return' ? state.settings.driver_message_return_template : state.settings.driver_message_pickup_template;
+  // a second volunteer is listed right after the first one's note
+  const vol2 = byId(state.volunteers, req.volunteer2_id);
+  const also = vol2 ? '\n' + [leg==='return' ? 'Also pick up from:' : 'Also deliver to:', vol2.name, vol2.address, mapUrl(vol2.address), vol2.note].filter(Boolean).join('\n') : '';
   return renderTemplate(tmpl, {
     request_id: req.id, driver_name: driver?.name||'',
     // the client's name and bag count only matter to drivers for Mashilach clients; for families the address is enough
     client_name: client?.is_mashilach ? client.name : '', client_address: client?.address||'', client_phone: client?.phone||'', client_note: client?.note||'',
     // tapping the link opens the address in the driver's maps app
     client_map: mapUrl(client?.address),
-    volunteer_name: vol?.name||'', volunteer_address: vol?.address||'', volunteer_phone: vol?.phone||'', volunteer_note: vol?.note||'', volunteer_map: mapUrl(vol?.address),
+    volunteer_name: vol?.name||'', volunteer_address: vol?.address||'', volunteer_phone: vol?.phone||'', volunteer_note: [vol?.note, also].filter(Boolean).join('\n'), volunteer_map: mapUrl(vol?.address),
     // the washer packages freely on the return leg, so no bag count there
     bags: leg==='return' || !client?.is_mashilach ? '' : bagsLabel(req.bags), requested_for: fmtDateTime(req.requested_for)
   });
@@ -581,7 +597,7 @@ function showToast(msg){ state.toast = msg; render(); setTimeout(()=>{ state.toa
 
 function volunteerReadiness(vol){
   const completedTime = r => new Date(r.completed_at || r.updated_at).getTime();
-  const completed = state.requests.filter(r=>r.volunteer_id===vol.id && r.status==='completed')
+  const completed = state.requests.filter(r=>hasVolunteer(r, vol.id) && r.status==='completed')
     .sort((a,b)=> completedTime(b) - completedTime(a));
   if(completed.length===0) return 'gray';
   const last = new Date(completedTime(completed[0]));
@@ -770,7 +786,7 @@ function topCard(kind){
   const counts = {};
   state.requests.filter(r=>r.status==='completed' && inPeriod(r.completed_at || r.updated_at, cfg.period, cfg.from, cfg.to)).forEach(r=>{
     // volunteers: one per completed call; drivers: one per leg they drove
-    const ids = kind==='volunteer' ? [r.volunteer_id] : [r.pickup_driver_id, r.return_driver_id];
+    const ids = kind==='volunteer' ? [r.volunteer_id, r.volunteer2_id] : [r.pickup_driver_id, r.return_driver_id];
     ids.filter(Boolean).forEach(id => counts[id] = (counts[id]||0) + 1);
   });
   const rows = Object.entries(counts).map(([id,n])=>[byId(state[kind+'s'], id), n]).filter(([p])=>p)
@@ -1136,10 +1152,10 @@ function personBox(role, kind, p, opts={}){
 
 // One-line summary used for Completed / Not Covered / Cancelled; tap to open the full card
 function requestRow(r){
-  const c = byId(state.clients, r.client_id), v = byId(state.volunteers, r.volunteer_id);
+  const c = byId(state.clients, r.client_id), v = byId(state.volunteers, r.volunteer_id), v2 = byId(state.volunteers, r.volunteer2_id);
   const pd = byId(state.drivers, r.pickup_driver_id), rd = byId(state.drivers, r.return_driver_id);
   const by = profileName(r.created_by);
-  const parts = [c?.name || 'No client', v && `Vol: ${v.name}`, pd && `Pickup: ${pd.name}`, rd && `Return: ${rd.name}`, by && `by ${by}`].filter(Boolean);
+  const parts = [c?.name || 'No client', v && `Vol: ${v.name}${v2 ? ' & ' + v2.name : ''}`, pd && `Pickup: ${pd.name}`, rd && `Return: ${rd.name}`, by && `by ${by}`].filter(Boolean);
   return `<div class="req-row" data-action="toggle-expand" data-id="${r.id}">
     <span class="status-dot status-${r.status}" title="${STATUS_LABELS[r.status]}"></span>
     <b>#${r.id}</b><span class="row-text">${parts.map(esc).join(' · ')}</span>
@@ -1150,7 +1166,7 @@ function requestRow(r){
 function requestCard(r){
   if(DONE.includes(r.status) && !state.expanded[r.id]) return requestRow(r);
   const client = byId(state.clients, r.client_id);
-  const vol = byId(state.volunteers, r.volunteer_id);
+  const vol = byId(state.volunteers, r.volunteer_id), vol2 = byId(state.volunteers, r.volunteer2_id);
   const pdriver = byId(state.drivers, r.pickup_driver_id);
   const rdriver = byId(state.drivers, r.return_driver_id);
   const by = profileName(r.created_by);
@@ -1191,6 +1207,8 @@ function requestCard(r){
       ${client.address ? `<div class="req-line">${icon('pin')} ${mapLink(client.address)}</div>` : ''}` : `<div class="req-line">${icon('client')} No client</div>`}
     <div class="req-line">${icon('bag')} ${bagsLabel(r.bags)} bag's &middot; ${icon('calendar')} ${fmtDateTime(r.requested_for)}</div>
     ${personBox('Volunteer', 'volunteer', vol, {address:true, reqId:r.id, removeField: isDone ? null : 'volunteer_id', when: addedOn(r, r.volunteer_assigned_at)})}
+    ${personBox('Second volunteer', 'volunteer', vol2, {address:true, reqId:r.id, removeField: isDone ? null : 'volunteer2_id', when: addedOn(r, r.volunteer2_assigned_at)})}
+    ${vol && !vol2 && !isDone ? `<a class="add-link" data-action="assign-person" data-id="${r.id}" data-field="volunteer2_id">+ Add another volunteer</a>` : ''}
     ${personBox('Pickup driver', 'driver', pdriver, {faded: pickupFaded, reqId:r.id, removeField: isDone ? null : 'pickup_driver_id', when: addedOn(r, r.pickup_assigned_at)})}
     ${personBox('Return driver', 'driver', rdriver, {reqId:r.id, removeField: isDone ? null : 'return_driver_id', when: addedOn(r, r.return_assigned_at)})}
     ${r.notes ? `<div class="private">${esc(r.notes)}</div>` : ''}
@@ -1206,11 +1224,13 @@ function statusBadgeInteractive(r){
 
 /* ============================= Lists, search and filters ============================= */
 // a volunteer "took a call" when they were put on a request that wasn't cancelled or left uncovered
-function volunteerCalls(id){ return state.requests.filter(r=>r.volunteer_id===id && !['cancelled','not_covered'].includes(r.status)); }
+function hasVolunteer(r, id){ return r.volunteer_id===id || r.volunteer2_id===id; }
+function volunteerCalls(id){ return state.requests.filter(r=>hasVolunteer(r, id) && !['cancelled','not_covered'].includes(r.status)); }
 function lastCall(id){ return Math.max(0, ...volunteerCalls(id).map(r=> new Date(r.volunteer_assigned_at || r.requested_for || r.created_at).getTime())); }
 function callCount(id){ return volunteerCalls(id).length; }
 function completedCount(kind, id){
   if(kind==='driver') return state.requests.filter(r=>r.status==='completed' && (r.pickup_driver_id===id || r.return_driver_id===id)).length;
+  if(kind==='volunteer') return state.requests.filter(r=>r.status==='completed' && hasVolunteer(r, id)).length;
   return state.requests.filter(r=>r.status==='completed' && r[kind+'_id']===id).length;
 }
 function countPill(n){ return `<span class="count-pill ${n?'':'zero'}" title="Completed">${icon('check')} ${n}</span>`; }
@@ -1386,7 +1406,7 @@ function clientDetail(){
 }
 function volunteerDetail(){
   const v = byId(state.volunteers, state.routeId); if(!v) return `<div class="empty">Volunteer not found.</div>`;
-  const reqs = state.requests.filter(r=>r.volunteer_id===v.id);
+  const reqs = state.requests.filter(r=>hasVolunteer(r, v.id));
   const rd = volunteerReadiness(v);
   return hero(v.name, statusBadgePlain(v.status) + `<span class="badge plain badge-white">${READY_LABEL[rd]}</span>`, 'editVolunteer', v.id, `<span class="dot ${rd}"></span>`)
     + `<div class="profile-grid">` + section('user', 'Contact Information', fieldRow('user','Name',esc(v.name)) + fieldRow('phone','Phone',telLink(v.phone)), 'editVolunteer', v.id)
@@ -1512,7 +1532,7 @@ function recurring(){
 }
 
 /* ============================= History ============================= */
-function history(){
+function historyPage(){
   const list = state.requests.filter(r=>DONE.includes(r.status));
   return `<div class="page-head"><h2>Request History</h2></div>
     ${list.length===0 ? `<div class="empty">No finished requests yet.</div>` : groupByDay(list, true)}`;
@@ -1934,7 +1954,7 @@ function contactFormModal(){
       <button class="btn btn-primary" data-action="save-contact">Save</button></div>`;
 }
 
-const routes = { messages: messagesPage, dashboard, dispatch, clients, volunteers, drivers, recurring, history, settings, client: clientDetail, volunteer: volunteerDetail, driver: driverDetail };
+const routes = { messages: messagesPage, dashboard, dispatch, clients, volunteers, drivers, recurring, history: historyPage, settings, client: clientDetail, volunteer: volunteerDetail, driver: driverDetail };
 
 /* ============================= Modals ============================= */
 function modalHtml(){
@@ -2038,7 +2058,7 @@ function statusToggleField(status){
 
 /* ---------- Search-and-pick lists (clients, volunteers, drivers) ---------- */
 function kindOf(field){ return KIND_FOR_FIELD[field.split('__')[0]]; }
-const KIND_FOR_FIELD = { client_id:'client', volunteer_id:'volunteer', pickup_driver_id:'driver', return_driver_id:'driver' };
+const KIND_FOR_FIELD = { client_id:'client', volunteer_id:'volunteer', volunteer2_id:'volunteer', pickup_driver_id:'driver', return_driver_id:'driver' };
 function pickerResults(field){
   const kind = kindOf(field);
   const q = state.pickerSearch[field] || '';
@@ -2136,12 +2156,12 @@ function statusMenuModal(){
 function assignPersonModal(){
   const r = byId(state.modal.recurring ? state.recurring : state.requests, state.modal.id); if(!r) return '';
   const field = state.modal.field;
-  const title = {volunteer_id:'Assign Volunteer', pickup_driver_id:'Assign Pickup Driver', return_driver_id:'Assign Return Driver'}[field];
+  const title = {volunteer_id:'Assign Volunteer', volunteer2_id:'Add Another Volunteer', pickup_driver_id:'Assign Pickup Driver', return_driver_id:'Assign Return Driver'}[field];
   const client = byId(state.clients, r.client_id);
   return `<h2>${title}${state.modal.recurring ? '' : ` &mdash; #${r.id}`}</h2>
     <div class="sub" style="margin-bottom:10px;">${esc(client?.name||'')} &middot; ${state.modal.recurring ? `Every ${esc(daysText(r.days))}` : fmtDateTime(r.requested_for)}</div>
     ${pickerSearchBox(field)}
-    ${field==='volunteer_id' ? pickerVolControls() : ''}
+    ${kindOf(field)==='volunteer' ? pickerVolControls() : ''}
     ${pickerResults(field)}`;
 }
 
@@ -2290,7 +2310,7 @@ function initEvents(){
     switch(action){
       case 'toggle-menu': state.menuOpen = !state.menuOpen; render(); break;
       case 'close-menu': if(e.target===actionEl) { state.menuOpen=false; render(); } break;
-      case 'logout': await sb.auth.signOut(); state.session=null; state.profile=null; state.menuOpen=false; state.modal=null; state.draft={}; state.route='dashboard'; state.authMode='login'; state.authError=''; state.authForm={}; state.toast=null; render(); break;
+      case 'logout': await sb.auth.signOut(); try{ history.replaceState(null, '', location.pathname); sessionStorage.removeItem('kvisa-view'); }catch(_){} state.session=null; state.profile=null; state.menuOpen=false; state.modal=null; state.draft={}; state.route='dashboard'; state.authMode='login'; state.authError=''; state.authForm={}; state.toast=null; render(); break;
       case 'switch-auth': state.authMode = state.authMode==='login'?'signup':'login'; state.authError=''; state.authInfo=''; render(); break;
       case 'do-login': {
         const email = document.getElementById('auth-email').value.trim();
@@ -2459,11 +2479,13 @@ function initEvents(){
       case 'unassign': {
         const id = Number(actionEl.getAttribute('data-id')), field = actionEl.getAttribute('data-field');
         const r = byId(state.requests, id);
-        const who = {volunteer_id:'volunteer', pickup_driver_id:'pickup driver', return_driver_id:'return driver'}[field];
+        const who = {volunteer_id:'volunteer', volunteer2_id:'second volunteer', pickup_driver_id:'pickup driver', return_driver_id:'return driver'}[field];
         if(!confirm(`Remove the ${who} from #${id}?`)) break;
         const patch = {[field]: null};
+        // the second volunteer moves up when the first is removed
+        if(field==='volunteer_id' && r.volunteer2_id){ patch.volunteer_id = r.volunteer2_id; patch.volunteer2_id = null; }
         // without its person, a step goes back to waiting for one
-        if(field==='volunteer_id' && r.status==='assigned') patch.status = 'open';
+        else if(field==='volunteer_id' && r.status==='assigned') patch.status = 'open';
         const saved = await updateRequest(id, patch);
         if(saved){ followTab(saved.status); showToast(`Removed the ${who}`); }
         break;
@@ -2655,6 +2677,7 @@ function autoStatus(r){
 }
 async function assignToRequest(id, field, value){
   const r = byId(state.requests, id);
+  if(field==='volunteer2_id' && value===r.volunteer_id){ showToast('Already the volunteer on this call'); return; }
   const patch = {[field]: value};
   const next = autoStatus({...r, ...patch});
   if(next !== r.status) patch.status = next;
@@ -2784,6 +2807,7 @@ async function onAuthed(){
     const {data:profile} = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
     state.profile = profile;
     if(!profile){ state.loading = false; render(); return; }
+    restoreLocation();
     state.loading = true; render();
     await loadAll();
   } else {

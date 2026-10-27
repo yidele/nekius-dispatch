@@ -487,3 +487,10 @@ alter table recurring_requests add column if not exists day_people jsonb not nul
 --   "I'll take 4") creates a waiting call_offer for each open call, and an automatic answer for a taken or
 --   unknown number. The texting company's incoming-text hook will call this same function.
 -- ============================================================
+
+-- ============================================================
+-- Second volunteer on a call (migration second_volunteer)
+alter table requests add column if not exists volunteer2_id uuid references volunteers(id) on delete set null;
+alter table requests add column if not exists volunteer2_assigned_at timestamptz;
+-- touch_request() also stamps volunteer2_assigned_at, the same way as the other people
+-- ============================================================
