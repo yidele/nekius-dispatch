@@ -341,7 +341,7 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .conv-row.active{background:var(--primary-light);}
 .conv-row.unread::after{content:'';position:absolute;left:8px;top:50%;width:10px;height:10px;margin-top:-5px;border-radius:50%;background:#0A84FF;}
 .conv-avatar{width:44px;height:44px;border-radius:50%;background:linear-gradient(180deg,#A9B0BB,#858C97);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:16px;flex-shrink:0;}
-.conv-avatar.posts{background:linear-gradient(180deg,var(--primary),var(--primary-dark));}
+.conv-avatar.group{background:linear-gradient(180deg,var(--primary),var(--primary-dark));}
 .conv-avatar svg{width:20px;height:20px;}
 .conv-main{flex:1;min-width:0;}
 .conv-top{display:flex;align-items:center;justify-content:space-between;gap:8px;}
@@ -353,7 +353,10 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .thread-head{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);background:rgba(248,248,248,.96);}
 .bubbles{padding:10px 14px 14px;display:flex;flex-direction:column;min-height:46vh;max-height:62vh;overflow-y:auto;background:var(--surface);}
 .time-sep{text-align:center;font-size:11.5px;font-weight:600;color:var(--ink-faint);margin:14px 0 6px;}
-.bubble{max-width:78%;margin-top:4px;}
+.bubble{max-width:78%;margin-top:2px;}
+.bubble.tail{margin-bottom:6px;}
+.bubble.in.tail .btext{border-bottom-left-radius:6px;}
+.bubble.out.tail .btext{border-bottom-right-radius:6px;}
 .bubble.in{align-self:flex-start;}
 .bubble.out{align-self:flex-end;text-align:right;}
 .btext{display:inline-block;text-align:left;padding:8px 13px;border-radius:19px;font-size:15px;line-height:1.35;word-break:break-word;}
@@ -367,6 +370,25 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .compose textarea{flex:1;margin:0;resize:none;border-radius:20px;padding:8px 14px;min-height:38px;line-height:1.35;}
 .send-btn{width:36px;height:36px;border-radius:50%;background:var(--primary);color:#fff;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;margin-bottom:1px;}
 .send-btn svg{width:18px;height:18px;}
+.send-btn:disabled{background:var(--line);cursor:default;}
+.compose-btn{color:var(--primary);flex-shrink:0;}
+.compose-btn svg{width:24px;height:24px;}
+.call-btn{color:var(--primary);}
+.call-btn svg{width:22px;height:22px;}
+.to-row{display:flex;align-items:center;gap:8px;padding:6px 14px;border-bottom:1px solid var(--line);background:var(--surface);}
+.to-row span{color:var(--ink-faint);font-size:15px;}
+.to-row input{border:none;padding:8px 0;flex:1;font-size:16px;background:transparent;box-shadow:none;}
+.to-row input:focus{outline:none;box-shadow:none;border:none;}
+.to-results{background:var(--bg);}
+.post-actions{justify-content:center;}
+.post-actions .btn{flex:1;}
+/* on phones and tablets an open conversation fills the screen, like a messaging app */
+@media (max-width: 1023px){
+  .thread.full{position:fixed;inset:0;z-index:40;border:none;border-radius:0;height:100vh;height:100dvh;}
+  .thread.full .thread-head{padding-top:calc(10px + env(safe-area-inset-top));}
+  .thread.full .bubbles{flex:1;min-height:0;max-height:none;}
+  .thread.full > .compose:last-child, .thread.full .test-reply .compose{padding-bottom:calc(8px + env(safe-area-inset-bottom));}
+}
 .thread-empty{display:none;}
 .test-reply{border-top:1.5px dashed var(--accent);background:var(--accent-light);}
 .test-reply label{margin:8px 12px 0;color:var(--accent-ink);}
@@ -388,7 +410,8 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
   .inbox.has-thread .conv-list{display:block;}
   .thread-empty{display:flex;align-items:center;justify-content:center;min-height:60vh;}
   .thread-back{display:none;}
-  .thread{position:sticky;top:76px;}
+  .thread{position:sticky;top:76px;height:calc(100vh - 110px);}
+  .thread .bubbles{flex:1;min-height:0;max-height:none;}
 }
 </style>
 </head>
@@ -1700,7 +1723,7 @@ function conversations(){
   return Object.entries(byPhone).map(([phone, msgs])=>{
     msgs.sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
     // posts go out to everyone, so they don't bring a conversation to the top (they have their own Posts chat)
-    const talk = msgs.filter(m=>!m.post_id);
+    const talk = msgs.filter(m=>!m.post_id && !m.list_key);
     return talk.length ? {phone, msgs, last: talk[talk.length-1], unread: msgs.filter(m=>m.direction==='in' && !m.read_at).length, who: whoIs(phone)} : null;
   }).filter(Boolean).sort((a,b)=> new Date(b.last.created_at) - new Date(a.last.created_at));
 }
@@ -1852,70 +1875,139 @@ function convRow(c){
     </div>
   </div>`;
 }
-// every post that went out, in one chat
-function postsRow(){
-  const p = state.posts[0]; if(!p) return '';
-  return `<div class="conv-row ${state.msgPhone==='posts'?'active':''}" data-action="open-thread" data-phone="posts">
-    <div class="conv-avatar posts">${icon('dispatch')}</div>
+// group chats: the Posts chat and one chat per list that was texted
+function groupChats(){
+  const chats = [];
+  const p = state.posts[0];
+  if(p) chats.push({key:'posts', name:'Posts', icon:'dispatch', at:p.created_at, body:p.body});
+  const lastByList = {};
+  for(const m of state.messages) if(m.list_key && (!lastByList[m.list_key] || m.created_at > lastByList[m.list_key].created_at)) lastByList[m.list_key] = m;
+  for(const [id, m] of Object.entries(lastByList)) if(listName(id)) chats.push({key:'list:'+id, name:listName(id), icon:'client', at:m.created_at, body:m.body});
+  return chats;
+}
+function groupRow(g){
+  return `<div class="conv-row ${state.msgPhone===g.key?'active':''}" data-action="open-thread" data-phone="${g.key}">
+    <div class="conv-avatar group">${icon(g.icon)}</div>
     <div class="conv-main">
-      <div class="conv-top"><b>Posts</b><span class="conv-time">${fmtMsgTime(p.created_at)}${icon('chev')}</span></div>
-      <div class="conv-snip">${esc(p.body.split('\n').filter(l=>l.trim()).join(' '))}</div>
+      <div class="conv-top"><b>${esc(g.name)}</b><span class="conv-time">${fmtMsgTime(g.at)}${icon('chev')}</span></div>
+      <div class="conv-snip">${esc(g.body.split('\n').filter(l=>l.trim()).join(' '))}</div>
     </div>
   </div>`;
+}
+function contactRow(p){
+  return `<div class="conv-row" data-action="open-thread" data-phone="${p.phone}">${avatarFor(p)}
+    <div class="conv-main"><b>${esc(p.name)}</b><div class="conv-snip">${kindLabel(p.kind)} · ${esc(fmtPhone(p.phone))}</div></div></div>`;
 }
 function inboxView(){
   const q = state.msgSearch.trim().toLowerCase(), digits = q.replace(/\D/g,'');
-  const convs = conversations().filter(c=> !q || (c.who?.name||'').toLowerCase().includes(q) || (digits.length>=3 && c.phone.includes(digits)));
-  const rows = (q ? '' : postsRow()) + convs.map(convRow).join('');
+  const match = (name, phone) => !q || (name||'').toLowerCase().includes(q) || (digits.length>=3 && (phone||'').includes(digits));
+  // everything in one list, newest activity first, like a phone's Messages app
+  const rows = [
+    ...groupChats().filter(g=>match(g.name)).map(g=>({at:g.at, html:groupRow(g)})),
+    ...conversations().filter(c=>match(c.who?.name, c.phone)).map(c=>({at:c.last.created_at, html:convRow(c)})),
+  ].sort((a,b)=> new Date(b.at) - new Date(a.at)).map(r=>r.html).join('');
+  // while searching, people you haven't texted yet show up too
+  const talked = new Set(conversations().map(c=>c.phone));
+  const others = q ? everyone().filter(p=>!talked.has(p.phone) && match(p.name, p.phone)).sort((a,b)=>a.name.localeCompare(b.name)).slice(0, 20) : [];
+  const thread = state.msgPhone==='new' ? newThreadView() : state.msgPhone==='posts' ? postsThread() : state.msgPhone?.startsWith('list:') ? listThreadView(state.msgPhone.slice(5)) : state.msgPhone ? threadView(state.msgPhone) : '';
   return `<div class="inbox ${state.msgPhone ? 'has-thread' : ''}">
     <div class="conv-list">
-      <div class="toolbar"><div class="search-box">${icon('search')}<input placeholder="Search…" value="${esc(state.msgSearch)}" data-live="msgSearch"></div>
-        <button class="btn btn-primary btn-sm btn-auto" data-action="new-message">${icon('plus')} New</button></div>
-      ${rows ? `<div class="conv-list-box">${rows}</div>` : `<div class="empty">${icon('chat')}<div>No messages</div></div>`}
+      <div class="toolbar"><div class="search-box">${icon('search')}<input placeholder="Search" value="${esc(state.msgSearch)}" data-live="msgSearch"></div>
+        <button class="icon-btn compose-btn" data-action="open-thread" data-phone="new" title="New message" aria-label="New message">${ICON_EDIT}</button></div>
+      ${rows ? `<div class="conv-list-box">${rows}</div>` : !others.length ? `<div class="empty">${icon('chat')}<div>${q ? 'No results' : 'No messages'}</div></div>` : ''}
+      ${others.length ? `<div class="date-group-label">Contacts</div><div class="conv-list-box">${others.map(contactRow).join('')}</div>` : ''}
     </div>
-    ${state.msgPhone==='posts' ? postsThread() : state.msgPhone ? threadView(state.msgPhone) : `<div class="thread thread-empty"><div class="empty">${icon('chat')}</div></div>`}
+    ${thread || `<div class="thread thread-empty"><div class="empty">${icon('chat')}</div></div>`}
   </div>`;
 }
-// a centered time above a message when it comes a while after the one before, like a phone's Messages app
-function withTimes(items, fn){
-  let prev = 0;
-  return items.map(x=>{ const t = new Date(x.created_at).getTime(), sep = t - prev > 30*60000 ? `<div class="time-sep">${fmtMsgTime(x.created_at, true)}</div>` : ''; prev = t; return sep + fn(x); }).join('');
+// message bubbles: a time in the middle when time has passed; a run of messages from the same side sits close together
+function renderBubbles(items, meta){
+  let prev = null;
+  return items.map((m, i)=>{
+    const t = new Date(m.created_at).getTime(), next = items[i+1];
+    const sep = !prev || t - new Date(prev.created_at).getTime() > 30*60000 ? `<div class="time-sep">${fmtMsgTime(m.created_at, true)}</div>` : '';
+    const lastOfRun = !next || next.direction !== m.direction || new Date(next.created_at).getTime() - t > 30*60000 || (meta(next) !== meta(m));
+    prev = m;
+    return `${sep}<div class="bubble ${m.direction} ${lastOfRun ? 'tail' : ''}"><div class="btext">${linkify(m.body)}</div>
+      ${lastOfRun && meta(m) ? `<div class="bmeta">${meta(m)}</div>` : ''}</div>`;
+  }).join('');
 }
-function bubble(m){
-  const st = m.status==='test' ? ' · Test' : m.status==='not_sent' ? ' · <span class="ns">Not sent</span>' : m.status==='failed' ? ' · <span class="ns">Failed</span>' : m.status==='delivered' ? ' · Delivered' : '';
-  return `<div class="bubble ${m.direction}"><div class="btext">${linkify(m.body)}</div>
-    ${m.direction==='out' ? `<div class="bmeta">${m.post_id ? 'Post · ' : ''}${esc(profileName(m.sent_by) || 'Automatic')}${st}</div>` : ''}</div>`;
+function statusWord(m){ return m.status==='test' ? ' · Test' : m.status==='not_sent' ? ' · <span class="ns">Not sent</span>' : m.status==='failed' ? ' · <span class="ns">Failed</span>' : m.status==='delivered' ? ' · Delivered' : ''; }
+function outMeta(m){
+  if(m.direction!=='out') return '';
+  const what = m.post_id ? 'Post · ' : m.list_key ? `To ${esc(listName(m.list_key) || 'a list')} · ` : '';
+  return what + esc(profileName(m.sent_by) || 'Automatic') + statusWord(m);
+}
+function composer(key){
+  const text = state.msgCompose[key] || '';
+  return `<div class="compose"><textarea id="msg-compose" rows="${Math.min(5, Math.max(1, text.split('\n').length))}" placeholder="Text Message">${esc(text)}</textarea>
+    <button class="send-btn" data-action="send-thread" data-phone="${key}" aria-label="Send" ${text.trim() ? '' : 'disabled'}>${icon('send')}</button></div>`;
+}
+function threadHead(avatar, title, sub, right){
+  return `<div class="thread-head">
+    <button class="icon-btn thread-back" data-action="close-thread" aria-label="Back">${icon('back')}</button>
+    ${avatar}<div class="conv-main"><b>${title}</b>${sub ? `<div class="sub">${sub}</div>` : ''}</div>${right||''}
+  </div>`;
 }
 function threadView(phone){
   const who = whoIs(phone);
   const msgs = state.messages.filter(m=>m.phone===phone).sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
   const name = !who ? esc(fmtPhone(phone)) : who.kind==='contact' ? esc(who.name) : `<span class="name-link" data-nav="${who.kind}" data-id="${who.id}">${esc(who.name)}</span>`;
-  return `<div class="thread">
-    <div class="thread-head">
-      <button class="icon-btn thread-back" data-action="close-thread" aria-label="Back">${icon('back')}</button>
-      ${avatarFor(who)}
-      <div class="conv-main"><b>${name}</b><div class="sub">${who ? kindLabel(who.kind)+' · ' : ''}${esc(fmtPhone(phone))}</div></div>
-      <a class="btn btn-outline btn-sm btn-auto" href="tel:${phone}">${icon('phone')} Call</a>
-    </div>
-    <div class="bubbles">${withTimes(msgs, bubble) || `<div class="empty">${icon('chat')}</div>`}</div>
-    <div class="compose"><textarea id="msg-compose" rows="1" placeholder="Text Message">${esc(state.msgCompose[phone]||'')}</textarea>
-      <button class="send-btn" data-action="send-thread" data-phone="${phone}" aria-label="Send">${icon('send')}</button></div>
+  return `<div class="thread full">
+    ${threadHead(avatarFor(who), name, `${who ? kindLabel(who.kind)+' · ' : ''}${esc(fmtPhone(phone))}`, `<a class="icon-btn call-btn" href="tel:${phone}" aria-label="Call">${icon('phone')}</a>`)}
+    <div class="bubbles">${renderBubbles(msgs, outMeta)}</div>
+    ${composer(phone)}
     ${testMode() ? `<div class="test-reply"><label>Test reply from ${esc(who?.name || fmtPhone(phone))}</label>
       <div class="compose"><textarea id="test-reply" rows="1">${esc(state.testReply||'')}</textarea>
       <button class="btn btn-outline btn-sm btn-auto" data-action="test-reply" data-phone="${phone}">Receive</button></div></div>` : ''}
   </div>`;
 }
+// a text to a whole list: each send shows once, with how many people got it
+function listThreadView(id){
+  const people = listPeople(id), seen = new Map();
+  for(const m of state.messages.filter(m=>m.list_key===id)){
+    const k = m.body + '|' + m.created_at.slice(0,19);
+    if(seen.has(k)) seen.get(k).count++; else seen.set(k, {...m, count:1});
+  }
+  const sends = [...seen.values()].sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
+  return `<div class="thread full">
+    ${threadHead(`<div class="conv-avatar group">${icon('client')}</div>`, esc(listName(id)), `${people.length} ${people.length===1 ? 'person' : 'people'}`)}
+    <div class="bubbles">${renderBubbles(sends, m=>`${m.count} ${m.count===1 ? 'person' : 'people'} · ${esc(profileName(m.sent_by) || '')}${statusWord(m)}`)}</div>
+    ${composer('list:'+id)}
+  </div>`;
+}
 function postsThread(){
-  const posts = state.posts.slice().sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
-  return `<div class="thread">
-    <div class="thread-head">
-      <button class="icon-btn thread-back" data-action="close-thread" aria-label="Back">${icon('back')}</button>
-      <div class="conv-avatar posts">${icon('dispatch')}</div>
-      <div class="conv-main"><b>Posts</b><div class="sub">${posts.length} sent</div></div>
-      <button class="btn btn-outline btn-sm btn-auto" data-action="msg-tab" data-tab="post">${icon('plus')} Post</button>
+  const posts = state.posts.slice().sort((a,b)=> new Date(a.created_at) - new Date(b.created_at)).map(p=>({...p, direction:'out'}));
+  const calls = callsToPost(), fresh = calls.filter(c=>!postNumber(c.r, c.leg)).length;
+  return `<div class="thread full">
+    ${threadHead(`<div class="conv-avatar group">${icon('dispatch')}</div>`, 'Posts', `${posts.length} sent`)}
+    <div class="bubbles">${renderBubbles(posts, p=>`${p.kind==='repost' ? 'Repost' : 'Post'} · ${p.recipients} ${p.recipients===1 ? 'person' : 'people'}${profileName(p.created_by) ? ' · ' + esc(profileName(p.created_by)) : ''}`)}</div>
+    <div class="compose post-actions">
+      <button class="btn btn-primary btn-sm" data-action="open-post" data-kind="new" ${fresh?'':'disabled'}>${icon('plus')} Post new${fresh ? ` · ${fresh}` : ''}</button>
+      <button class="btn btn-outline btn-sm" data-action="open-post" data-kind="repost" ${calls.length?'':'disabled'}>${icon('repeat')} Repost open${calls.length ? ` · ${calls.length}` : ''}</button>
     </div>
-    <div class="bubbles">${withTimes(posts, p=>`<div class="bubble out"><div class="btext">${linkify(p.body)}</div>
-      <div class="bmeta">${p.kind==='repost' ? 'Repost' : 'Post'} · ${p.recipients} ${p.recipients===1 ? 'person' : 'people'}${profileName(p.created_by) ? ' · ' + esc(profileName(p.created_by)) : ''}</div></div>`)}</div>
+  </div>`;
+}
+// New message: type a name or number in "To:", tap who it is, and their conversation opens
+function newThreadView(){
+  const q = (state.pickerSearch.to||'').trim(), digits = q.replace(/\D/g,'');
+  let list = '';
+  if(q){
+    const lists = allLists().filter(l=>l.name.toLowerCase().includes(q.toLowerCase()) && listPeople(l.id).length);
+    const ppl = peopleMatches(q, ()=>false);
+    list = [...lists.map(l=>`<div class="conv-row" data-action="open-thread" data-phone="list:${l.id}"><div class="conv-avatar group">${icon('client')}</div>
+        <div class="conv-main"><b>${esc(l.name)}</b><div class="conv-snip">List · ${listPeople(l.id).length} people</div></div></div>`),
+      ...ppl.map(contactRow),
+      ...(normPhone(digits).length===10 && !ppl.some(p=>p.phone===normPhone(digits)) ? [`<div class="conv-row" data-action="open-thread" data-phone="${normPhone(digits)}">${avatarFor(null)}<div class="conv-main"><b>${esc(fmtPhone(digits))}</b></div></div>`] : []),
+    ].join('');
+  } else {
+    // nothing typed yet: recent conversations first
+    list = conversations().slice(0, 12).map(c=>contactRow({...(c.who || {kind:'phone', name: fmtPhone(c.phone)}), phone: c.phone})).join('');
+  }
+  return `<div class="thread full">
+    ${threadHead('', 'New Message', '')}
+    <div class="to-row"><span>To:</span><input id="to-input" autocomplete="off" autocorrect="off" value="${esc(state.pickerSearch.to||'')}" data-live="pickerSearch.to"></div>
+    <div class="bubbles to-results">${list ? `<div class="conv-list-box">${list}</div>` : `<div class="empty">No match</div>`}</div>
   </div>`;
 }
 function offerRow(o, withCall){
@@ -1952,7 +2044,7 @@ function listsView(){
     return `<div class="section-card list-box">
       <div class="conv-top"><b>${esc(l.name)}</b>${l.builtin ? '' : `<button class="icon-only" title="Edit list" data-action="open-list-form" data-id="${l.id}">${ICON_EDIT}</button>`}</div>
       <div class="sub">${people.length} ${people.length===1 ? 'person' : 'people'}${people.length ? ' · ' + esc(people.slice(0,3).map(p=>p.name).join(', ')) + (people.length>3 ? '…' : '') : ''}</div>
-      <button class="btn btn-outline btn-sm btn-auto" style="margin-top:10px;" data-action="new-message" data-list="${l.id}" ${people.length?'':'disabled'}>${icon('chat')} Text</button>
+      <button class="btn btn-outline btn-sm btn-auto" style="margin-top:10px;" data-action="open-thread" data-phone="list:${l.id}" ${people.length?'':'disabled'}>${icon('chat')} Text</button>
     </div>`; };
   return `<div class="toolbar" style="justify-content:flex-end;"><button class="btn btn-primary btn-sm btn-auto" data-action="open-list-form">${icon('plus')} New list</button></div>
     <div class="list-grid">${allLists().map(card).join('')}</div>`;
@@ -1976,45 +2068,12 @@ function contactsView(){
 }
 
 /* ---------- Messages windows ---------- */
-function draftRecipients(d){
-  const seen = new Map(), add = p=>{ if(p && p.phone && !seen.has(p.phone)) seen.set(p.phone, p); };
-  (d.lists||[]).forEach(id=>listPeople(id).forEach(add));
-  (d.to||[]).forEach(t=>add(personByRef(t)));
-  return [...seen.values()];
-}
 function peopleMatches(q, skip){
   const ql = q.toLowerCase(), digits = q.replace(/\D/g,'');
   return everyone().filter(p=>(p.name.toLowerCase().includes(ql) || (digits.length>=3 && p.phone.includes(digits))) && !skip(p)).slice(0, 15);
 }
 function personPick(p, action){
   return `<div class="picker-item" data-action="${action}" data-kind="${p.kind}" data-id="${p.id}"><div><b>${esc(p.name)}</b><div class="sub">${kindLabel(p.kind)} · ${esc(fmtPhone(p.phone))}</div></div><span class="sub">Add</span></div>`;
-}
-function newMessageModal(){
-  const d = state.draft, q = (state.pickerSearch.msg||'').trim(), digits = q.replace(/\D/g,'');
-  const people = draftRecipients(d);
-  const chips = [
-    ...(d.lists||[]).map(id=>`<span class="member-chip">${esc(listName(id))} · ${listPeople(id).length}<a data-action="msg-remove" data-list="${id}">&times;</a></span>`),
-    ...(d.to||[]).map((t,i)=>`<span class="member-chip">${esc(personByRef(t)?.name || '')}<a data-action="msg-remove" data-i="${i}">&times;</a></span>`),
-  ].join('');
-  let results = '';
-  if(q){
-    const lists = allLists().filter(l=>l.name.toLowerCase().includes(q.toLowerCase()) && !(d.lists||[]).includes(String(l.id)));
-    const ppl = peopleMatches(q, p=>(d.to||[]).some(t=>t.kind===p.kind && String(t.id)===String(p.id)));
-    results = `<div class="picker-list">
-      ${lists.map(l=>`<div class="picker-item" data-action="msg-add" data-list="${l.id}"><div><b>${esc(l.name)}</b><div class="sub">List · ${listPeople(l.id).length}</div></div><span class="sub">Add</span></div>`).join('')}
-      ${ppl.map(p=>personPick(p, 'msg-add')).join('')}
-      ${normPhone(digits).length===10 && !ppl.length ? `<div class="picker-item picker-add" data-action="msg-add" data-phone="${normPhone(digits)}">+ ${esc(fmtPhone(digits))}</div>` : ''}
-      ${!lists.length && !ppl.length && normPhone(digits).length!==10 ? `<div class="picker-item sub">No match for "${esc(q)}"</div>` : ''}
-    </div>`;
-  }
-  return `<h2>New message</h2>
-    <label>To</label>
-    ${chips ? `<div class="chip-row" style="margin-bottom:8px;">${chips}</div>` : ''}
-    <div class="search-box">${icon('search')}<input placeholder="Name, list or phone number" value="${esc(state.pickerSearch.msg||'')}" data-live="pickerSearch.msg"></div>
-    ${results}
-    <div class="field" style="margin-top:12px;"><label>Message</label><textarea data-bind="text" rows="4">${esc(d.text||'')}</textarea></div>
-    <div class="btn-row"><button class="btn btn-outline" data-action="close-modal">Cancel</button>
-      <button class="btn btn-primary" data-action="send-message" ${people.length?'':'disabled'}>Send${people.length ? ` to ${people.length}` : ''}</button></div>`;
 }
 function postPreviewModal(){
   const m = state.modal, d = state.draft, people = listPeople(d.list);
@@ -2064,7 +2123,7 @@ function modalHtml(){
     recurringForm: recurringFormModal,
     occurrence: occurrenceModal,
     sendInvite: sendInviteModal,
-    newMessage: newMessageModal, postPreview: postPreviewModal, listForm: listFormModal, contactForm: contactFormModal,
+    postPreview: postPreviewModal, listForm: listFormModal, contactForm: contactFormModal,
   };
   const fn = map[m.type];
   return `<div class="modal-overlay" data-action="overlay-click"><div class="modal">
@@ -2434,38 +2493,21 @@ function initEvents(){
       case 'msg-tab': state.msgTab = actionEl.getAttribute('data-tab'); render(); break;
       case 'open-thread': {
         const phone = actionEl.getAttribute('data-phone');
-        state.route = 'messages'; state.msgTab = 'inbox'; state.msgPhone = phone; state.modal = null; state.menuOpen = false;
-        render(); await markRead(phone); break;
+        state.route = 'messages'; state.msgTab = 'inbox'; state.msgPhone = phone; state.modal = null; state.menuOpen = false; state.pickerSearch.to = '';
+        render();
+        if(phone==='new') document.getElementById('to-input')?.focus(); else if(/^\d+$/.test(phone)) await markRead(phone);
+        break;
       }
       case 'close-thread': state.msgPhone = null; render(); break;
       case 'send-thread': {
-        const phone = actionEl.getAttribute('data-phone'), body = (document.getElementById('msg-compose')?.value||'').trim();
+        const key = actionEl.getAttribute('data-phone'), body = (document.getElementById('msg-compose')?.value||'').trim();
         if(!body) break;
-        if((await sendTexts([{phone, body}])).length){ state.msgCompose[phone] = ''; showToast(sentWord(1)); }
+        const listId = key.startsWith('list:') ? key.slice(5) : null;
+        const rows = listId ? listPeople(listId).map(p=>({phone:p.phone, body, list_key:listId})) : [{phone:key, body}];
+        state.msgCompose[key] = ''; render();
+        if(!(await sendTexts(rows)).length){ state.msgCompose[key] = body; }
+        render(); document.getElementById('msg-compose')?.focus();
         break;
-      }
-      case 'new-message': {
-        const l = actionEl.getAttribute('data-list');
-        state.modal = {type:'newMessage'}; state.draft = {to:[], lists: l ? [l] : [], text:''}; state.pickerSearch = {}; render(); break;
-      }
-      case 'msg-add': {
-        const d = state.draft, l = actionEl.getAttribute('data-list'), ph = actionEl.getAttribute('data-phone');
-        if(l) d.lists.push(l); else if(ph) d.to.push({kind:'phone', phone:ph}); else d.to.push({kind:actionEl.getAttribute('data-kind'), id:actionEl.getAttribute('data-id')});
-        state.pickerSearch.msg = ''; render(); break;
-      }
-      case 'msg-remove': {
-        const d = state.draft, l = actionEl.getAttribute('data-list');
-        if(l) d.lists = d.lists.filter(x=>x!==l); else d.to.splice(Number(actionEl.getAttribute('data-i')), 1);
-        render(); break;
-      }
-      case 'send-message': {
-        const people = draftRecipients(state.draft), body = (state.draft.text||'').trim();
-        if(!body){ showToast('Type a message'); break; }
-        if(!people.length) break;
-        if(!(await sendTexts(people.map(p=>({phone:p.phone, body})))).length) break;
-        state.modal = null; state.draft = {}; state.route = 'messages'; state.msgTab = 'inbox';
-        if(people.length===1) state.msgPhone = people[0].phone;
-        showToast(sentWord(people.length)); break;
       }
       case 'open-post': {
         const kind = actionEl.getAttribute('data-kind'), calls = callsToPost();
@@ -2735,8 +2777,18 @@ function initEvents(){
     const bindEl = e.target.closest('[data-bind]');
     if(bindEl){ state.draft[bindEl.getAttribute('data-bind')] = bindEl.value; }
     if(e.target.id && e.target.id.startsWith('auth-')) state.authForm[e.target.id] = e.target.value;
-    if(e.target.id === 'msg-compose') state.msgCompose[state.msgPhone] = e.target.value;
+    if(e.target.id === 'msg-compose'){
+      state.msgCompose[state.msgPhone] = e.target.value;
+      e.target.rows = Math.min(5, Math.max(1, e.target.value.split('\n').length));
+      const btn = document.querySelector('.send-btn'); if(btn) btn.disabled = !e.target.value.trim();
+    }
     if(e.target.id === 'test-reply') state.testReply = e.target.value;
+  });
+  // on a computer Enter sends and Shift+Enter starts a new line; phones keep Enter for new lines, like messaging apps
+  document.addEventListener('keydown', (e)=>{
+    if(e.target.id==='msg-compose' && e.key==='Enter' && !e.shiftKey && matchMedia('(hover: hover) and (pointer: fine)').matches){
+      e.preventDefault(); document.querySelector('.send-btn')?.click();
+    }
   });
   document.addEventListener('change', (e)=>{
     if(e.target.closest('[data-live]')) return;

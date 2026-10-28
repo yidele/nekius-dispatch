@@ -508,3 +508,8 @@ alter publication supabase_realtime add table
 --   (Posted · Pickup → Delivered, Posted · Return → Completed) and answers "Thank you! Marked as done."
 --   With more than one call open and no number, it answers asking which one.
 -- ============================================================
+
+-- ============================================================
+-- A text sent to a whole list carries the list's id, so the list has its own chat (migration messages_list_key)
+alter table messages add column if not exists list_key text;
+-- ============================================================
