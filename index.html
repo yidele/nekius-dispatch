@@ -333,30 +333,40 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 /* messages: inbox, conversation, posts */
 .btn:disabled{opacity:.45;cursor:default;}
 .btn-auto{width:auto;flex:none;}
-.conv-row{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-m);padding:10px 12px;margin-bottom:8px;cursor:pointer;}
-.conv-row:hover{border-color:var(--primary-light);}
-.conv-row.active{border-color:var(--primary);background:var(--primary-light);}
-.conv-avatar{width:40px;height:40px;border-radius:50%;background:var(--primary-light);color:var(--primary-dark);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;}
+/* conversation list: one white list with thin lines between people, like a phone's Messages app */
+.conv-list-box{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-m);overflow:hidden;}
+.conv-row{display:flex;align-items:center;gap:12px;padding:10px 12px 10px 24px;cursor:pointer;position:relative;background:var(--surface);}
+.conv-row + .conv-row::before{content:'';position:absolute;left:80px;right:0;top:0;border-top:1px solid var(--line);}
+.conv-row:hover{background:var(--surface-2);}
+.conv-row.active{background:var(--primary-light);}
+.conv-row.unread::after{content:'';position:absolute;left:8px;top:50%;width:10px;height:10px;margin-top:-5px;border-radius:50%;background:#0A84FF;}
+.conv-avatar{width:44px;height:44px;border-radius:50%;background:linear-gradient(180deg,#A9B0BB,#858C97);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:16px;flex-shrink:0;}
+.conv-avatar.posts{background:linear-gradient(180deg,var(--primary),var(--primary-dark));}
+.conv-avatar svg{width:20px;height:20px;}
 .conv-main{flex:1;min-width:0;}
 .conv-top{display:flex;align-items:center;justify-content:space-between;gap:8px;}
-.conv-top b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.conv-snip{font-size:13.5px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.conv-snip.unread{color:var(--ink);font-weight:600;}
-.unread-dot{background:var(--primary);color:#fff;border-radius:999px;font-size:11.5px;font-weight:700;min-width:22px;height:22px;padding:0 6px;display:flex;align-items:center;justify-content:center;}
+.conv-top b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;}
+.conv-time{font-size:13px;color:var(--ink-faint);display:flex;align-items:center;gap:2px;white-space:nowrap;}
+.conv-time svg{width:13px;height:13px;}
+.conv-snip{font-size:14px;line-height:1.3;color:var(--ink-soft);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;margin-top:1px;}
 .thread{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-l);display:flex;flex-direction:column;overflow:hidden;}
-.thread-head{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);}
-.bubbles{padding:14px;display:flex;flex-direction:column;gap:10px;min-height:46vh;max-height:62vh;overflow-y:auto;background:var(--bg);}
-.bubble{max-width:84%;}
+.thread-head{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);background:rgba(248,248,248,.96);}
+.bubbles{padding:10px 14px 14px;display:flex;flex-direction:column;min-height:46vh;max-height:62vh;overflow-y:auto;background:var(--surface);}
+.time-sep{text-align:center;font-size:11.5px;font-weight:600;color:var(--ink-faint);margin:14px 0 6px;}
+.bubble{max-width:78%;margin-top:4px;}
 .bubble.in{align-self:flex-start;}
 .bubble.out{align-self:flex-end;text-align:right;}
-.btext{display:inline-block;text-align:left;padding:9px 13px;border-radius:18px;font-size:14.5px;line-height:1.4;word-break:break-word;}
-.bubble.in .btext{background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:6px;}
-.bubble.out .btext{background:var(--primary);color:#fff;border-bottom-right-radius:6px;}
+.btext{display:inline-block;text-align:left;padding:8px 13px;border-radius:19px;font-size:15px;line-height:1.35;word-break:break-word;}
+.bubble.in .btext{background:#E9E9EB;color:#111;}
+.bubble.out .btext{background:var(--primary);color:#fff;}
 .bubble.out .btext a{color:#fff;}
-.bmeta{font-size:11.5px;color:var(--ink-faint);margin-top:3px;padding:0 4px;}
+.bubble.in .btext a{color:#0A64D6;}
+.bmeta{font-size:11px;color:var(--ink-faint);margin-top:2px;padding:0 6px;}
 .bmeta .ns{color:var(--danger);font-weight:600;}
-.compose{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);align-items:flex-end;}
-.compose textarea{flex:1;margin:0;resize:none;}
+.compose{display:flex;gap:8px;padding:8px 10px;border-top:1px solid var(--line);align-items:flex-end;background:var(--surface);}
+.compose textarea{flex:1;margin:0;resize:none;border-radius:20px;padding:8px 14px;min-height:38px;line-height:1.35;}
+.send-btn{width:36px;height:36px;border-radius:50%;background:var(--primary);color:#fff;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;margin-bottom:1px;}
+.send-btn svg{width:18px;height:18px;}
 .thread-empty{display:none;}
 .test-reply{border-top:1.5px dashed var(--accent);background:var(--accent-light);}
 .test-reply label{margin:8px 12px 0;color:var(--accent-ink);}
@@ -528,6 +538,8 @@ const ICONS = {
   filter:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/></svg>',
   todo:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 8 8 4"/><polyline points="3 13 5 15 8 11"/><line x1="11" y1="6" x2="21" y2="6"/><line x1="11" y1="13" x2="21" y2="13"/><line x1="11" y1="20" x2="21" y2="20"/><circle cx="5.5" cy="20" r="1.6"/></svg>',
   chat:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.5-4.9A8 8 0 1 1 21 12z"/></svg>',
+  chev:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>',
+  send:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="6 11 12 5 18 11"/></svg>',
   clip:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="3" width="10" height="4" rx="1"/><path d="M7 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/></svg>',
   alert:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>',
   x:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
@@ -1687,8 +1699,10 @@ function conversations(){
   for(const m of state.messages) (byPhone[m.phone] ||= []).push(m);
   return Object.entries(byPhone).map(([phone, msgs])=>{
     msgs.sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
-    return {phone, msgs, last: msgs[msgs.length-1], unread: msgs.filter(m=>m.direction==='in' && !m.read_at).length, who: whoIs(phone)};
-  }).sort((a,b)=> new Date(b.last.created_at) - new Date(a.last.created_at));
+    // posts go out to everyone, so they don't bring a conversation to the top (they have their own Posts chat)
+    const talk = msgs.filter(m=>!m.post_id);
+    return talk.length ? {phone, msgs, last: talk[talk.length-1], unread: msgs.filter(m=>m.direction==='in' && !m.read_at).length, who: whoIs(phone)} : null;
+  }).filter(Boolean).sort((a,b)=> new Date(b.last.created_at) - new Date(a.last.created_at));
 }
 function unreadCount(){ return state.messages.filter(m=>m.direction==='in' && !m.read_at).length; }
 
@@ -1746,7 +1760,8 @@ async function testReply(phone){
   const {data, error} = await sb.rpc('receive_text', {p_phone: phone, p_body: body});
   if(error){ showToast(error.message); return; }
   state.testReply = ''; await reloadMessaging(); await markRead(phone); // it's on screen, so it's read
-  showToast(data?.offers ? `Asked for ${data.offers===1 ? 'a call' : data.offers+' calls'} · see Post` : data?.replies ? 'Answered automatically' : 'Received');
+  if(data?.advanced){ const {data:reqs} = await sb.from('requests').select('*').order('id',{ascending:false}); if(reqs) state.requests = reqs; }
+  showToast(data?.advanced ? 'Marked as done' : data?.offers ? `Asked for ${data.offers===1 ? 'a call' : data.offers+' calls'} · see Post` : data?.replies ? 'Answered automatically' : 'Received');
 }
 async function markRead(phone){
   const unread = state.messages.filter(m=>m.phone===phone && m.direction==='in' && !m.read_at);
@@ -1828,33 +1843,48 @@ function messagesPage(){
 // letters only, so "Shimon (warehouse)" shows SW
 function avatarFor(who){ return `<div class="conv-avatar">${who && who.kind!=='phone' ? esc(initials(who.name.replace(/[^\p{L}\s]/gu, ' '))) : icon('user')}</div>`; }
 function convRow(c){
-  const firstLine = (c.last.body.split('\n').find(l=>l.trim()) || '');
-  return `<div class="conv-row ${state.msgPhone===c.phone?'active':''}" data-action="open-thread" data-phone="${c.phone}">
+  const preview = c.last.body.split('\n').filter(l=>l.trim()).join(' ');
+  return `<div class="conv-row ${c.unread?'unread':''} ${state.msgPhone===c.phone?'active':''}" data-action="open-thread" data-phone="${c.phone}">
     ${avatarFor(c.who)}
     <div class="conv-main">
-      <div class="conv-top"><b>${esc(c.who?.name || fmtPhone(c.phone))}</b><span class="sub">${fmtMsgTime(c.last.created_at)}</span></div>
-      <div class="conv-snip ${c.unread?'unread':''}">${c.last.direction==='out' ? 'You: ' : ''}${esc(firstLine)}</div>
+      <div class="conv-top"><b>${esc(c.who?.name || fmtPhone(c.phone))}</b><span class="conv-time">${fmtMsgTime(c.last.created_at)}${icon('chev')}</span></div>
+      <div class="conv-snip">${c.last.direction==='out' ? 'You: ' : ''}${esc(preview)}</div>
     </div>
-    ${c.unread ? `<span class="unread-dot">${c.unread}</span>` : ''}
+  </div>`;
+}
+// every post that went out, in one chat
+function postsRow(){
+  const p = state.posts[0]; if(!p) return '';
+  return `<div class="conv-row ${state.msgPhone==='posts'?'active':''}" data-action="open-thread" data-phone="posts">
+    <div class="conv-avatar posts">${icon('dispatch')}</div>
+    <div class="conv-main">
+      <div class="conv-top"><b>Posts</b><span class="conv-time">${fmtMsgTime(p.created_at)}${icon('chev')}</span></div>
+      <div class="conv-snip">${esc(p.body.split('\n').filter(l=>l.trim()).join(' '))}</div>
+    </div>
   </div>`;
 }
 function inboxView(){
   const q = state.msgSearch.trim().toLowerCase(), digits = q.replace(/\D/g,'');
   const convs = conversations().filter(c=> !q || (c.who?.name||'').toLowerCase().includes(q) || (digits.length>=3 && c.phone.includes(digits)));
+  const rows = (q ? '' : postsRow()) + convs.map(convRow).join('');
   return `<div class="inbox ${state.msgPhone ? 'has-thread' : ''}">
     <div class="conv-list">
       <div class="toolbar"><div class="search-box">${icon('search')}<input placeholder="Search…" value="${esc(state.msgSearch)}" data-live="msgSearch"></div>
         <button class="btn btn-primary btn-sm btn-auto" data-action="new-message">${icon('plus')} New</button></div>
-      ${convs.length ? convs.map(convRow).join('') : `<div class="empty">${icon('chat')}<div>No messages</div></div>`}
+      ${rows ? `<div class="conv-list-box">${rows}</div>` : `<div class="empty">${icon('chat')}<div>No messages</div></div>`}
     </div>
-    ${state.msgPhone ? threadView(state.msgPhone) : `<div class="thread thread-empty"><div class="empty">${icon('chat')}</div></div>`}
+    ${state.msgPhone==='posts' ? postsThread() : state.msgPhone ? threadView(state.msgPhone) : `<div class="thread thread-empty"><div class="empty">${icon('chat')}</div></div>`}
   </div>`;
 }
+// a centered time above a message when it comes a while after the one before, like a phone's Messages app
+function withTimes(items, fn){
+  let prev = 0;
+  return items.map(x=>{ const t = new Date(x.created_at).getTime(), sep = t - prev > 30*60000 ? `<div class="time-sep">${fmtMsgTime(x.created_at, true)}</div>` : ''; prev = t; return sep + fn(x); }).join('');
+}
 function bubble(m){
-  const by = m.direction==='out' ? profileName(m.sent_by) : '';
-  const st = m.direction!=='out' ? '' : m.status==='test' ? ' · Test' : m.status==='not_sent' ? ' · <span class="ns">Not sent</span>' : m.status==='failed' ? ' · <span class="ns">Failed</span>' : m.status==='delivered' ? ' · Delivered' : '';
+  const st = m.status==='test' ? ' · Test' : m.status==='not_sent' ? ' · <span class="ns">Not sent</span>' : m.status==='failed' ? ' · <span class="ns">Failed</span>' : m.status==='delivered' ? ' · Delivered' : '';
   return `<div class="bubble ${m.direction}"><div class="btext">${linkify(m.body)}</div>
-    <div class="bmeta">${m.post_id ? 'Post · ' : ''}${fmtMsgTime(m.created_at, true)}${m.direction==='out' ? ` · ${esc(by || 'Automatic')}` : ''}${st}</div></div>`;
+    ${m.direction==='out' ? `<div class="bmeta">${m.post_id ? 'Post · ' : ''}${esc(profileName(m.sent_by) || 'Automatic')}${st}</div>` : ''}</div>`;
 }
 function threadView(phone){
   const who = whoIs(phone);
@@ -1867,12 +1897,25 @@ function threadView(phone){
       <div class="conv-main"><b>${name}</b><div class="sub">${who ? kindLabel(who.kind)+' · ' : ''}${esc(fmtPhone(phone))}</div></div>
       <a class="btn btn-outline btn-sm btn-auto" href="tel:${phone}">${icon('phone')} Call</a>
     </div>
-    <div class="bubbles">${msgs.map(bubble).join('') || `<div class="empty">${icon('chat')}</div>`}</div>
-    <div class="compose"><textarea id="msg-compose" rows="2">${esc(state.msgCompose[phone]||'')}</textarea>
-      <button class="btn btn-primary btn-auto" data-action="send-thread" data-phone="${phone}">Send</button></div>
+    <div class="bubbles">${withTimes(msgs, bubble) || `<div class="empty">${icon('chat')}</div>`}</div>
+    <div class="compose"><textarea id="msg-compose" rows="1" placeholder="Text Message">${esc(state.msgCompose[phone]||'')}</textarea>
+      <button class="send-btn" data-action="send-thread" data-phone="${phone}" aria-label="Send">${icon('send')}</button></div>
     ${testMode() ? `<div class="test-reply"><label>Test reply from ${esc(who?.name || fmtPhone(phone))}</label>
       <div class="compose"><textarea id="test-reply" rows="1">${esc(state.testReply||'')}</textarea>
-      <button class="btn btn-outline btn-auto" data-action="test-reply" data-phone="${phone}">Receive</button></div></div>` : ''}
+      <button class="btn btn-outline btn-sm btn-auto" data-action="test-reply" data-phone="${phone}">Receive</button></div></div>` : ''}
+  </div>`;
+}
+function postsThread(){
+  const posts = state.posts.slice().sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
+  return `<div class="thread">
+    <div class="thread-head">
+      <button class="icon-btn thread-back" data-action="close-thread" aria-label="Back">${icon('back')}</button>
+      <div class="conv-avatar posts">${icon('dispatch')}</div>
+      <div class="conv-main"><b>Posts</b><div class="sub">${posts.length} sent</div></div>
+      <button class="btn btn-outline btn-sm btn-auto" data-action="msg-tab" data-tab="post">${icon('plus')} Post</button>
+    </div>
+    <div class="bubbles">${withTimes(posts, p=>`<div class="bubble out"><div class="btext">${linkify(p.body)}</div>
+      <div class="bmeta">${p.kind==='repost' ? 'Repost' : 'Post'} · ${p.recipients} ${p.recipients===1 ? 'person' : 'people'}${profileName(p.created_by) ? ' · ' + esc(profileName(p.created_by)) : ''}</div></div>`)}</div>
   </div>`;
 }
 function offerRow(o, withCall){
@@ -1925,7 +1968,7 @@ function contactsView(){
       <div class="chip ${!kind?'active':''}" data-action="msg-contact-kind" data-kind="">All · ${all.length}</div>
       ${PEOPLE_KINDS.map(([k,l])=>`<div class="chip ${kind===k?'active':''}" data-action="msg-contact-kind" data-kind="${k}">${l}s · ${all.filter(p=>p.kind===k).length}</div>`).join('')}
     </div>
-    ${list.length ? `<div class="list-grid">${list.map(p=>`<div class="conv-row" data-action="open-thread" data-phone="${p.phone}">
+    ${list.length ? `<div class="conv-list-box">${list.map(p=>`<div class="conv-row" data-action="open-thread" data-phone="${p.phone}">
         ${avatarFor(p)}
         <div class="conv-main"><b>${esc(p.name)}</b><div class="sub">${kindLabel(p.kind)} · ${telLink(fmtPhone(p.phone))}</div></div>
         ${p.kind==='contact' ? `<button class="icon-only" title="Edit contact" data-action="open-contact-form" data-id="${p.id}">${ICON_EDIT}</button>` : ''}

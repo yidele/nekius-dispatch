@@ -501,3 +501,10 @@ alter publication supabase_realtime add table
   clients, volunteers, drivers, requests, recurring_requests, recurring_overrides, profiles, app_settings,
   contacts, contact_lists, messages, posts, post_numbers, call_offers;
 -- ============================================================
+
+-- ============================================================
+-- receive_text() also understands "done" (migration receive_text_done):
+--   "done", "delivered", "dropped off", "done 2" … from a driver moves their call on
+--   (Posted · Pickup → Delivered, Posted · Return → Completed) and answers "Thank you! Marked as done."
+--   With more than one call open and no number, it answers asking which one.
+-- ============================================================
