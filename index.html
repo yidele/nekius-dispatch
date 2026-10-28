@@ -636,8 +636,59 @@ async function loadAll(){
   if(s.data) state.settings = { ...state.settings, ...s.data };
   state.loading = false;
   render();
+  startLive();
   await revertExpiredTempInactive();
 }
+
+/* ============================= Live updates ============================= */
+// every open app hears about changes made by anyone else and updates by itself
+const LIVE_TABLES = { clients:'clients', volunteers:'volunteers', drivers:'drivers', requests:'requests', recurring_requests:'recurring',
+  recurring_overrides:'overrides', profiles:'profiles', contacts:'contacts', contact_lists:'lists', messages:'messages', posts:'posts',
+  post_numbers:'postNumbers', call_offers:'offers' };
+const LIVE_KEY = { post_numbers: r=>r.day+'|'+r.number, recurring_overrides: r=>r.recurring_id+'|'+r.run_date };
+const BY_NAME = ['clients','volunteers','drivers','contacts','lists'];
+let liveChannel = null, liveJoined = false, liveRenderTimer = null, liveRenderWaiting = false, hiddenSince = 0;
+function startLive(){
+  if(liveChannel) return;
+  liveChannel = sb.channel('kvisa-live');
+  for(const table of Object.keys(LIVE_TABLES)) liveChannel.on('postgres_changes', {event:'*', schema:'public', table}, p=>applyLive(table, p));
+  liveChannel.on('postgres_changes', {event:'UPDATE', schema:'public', table:'app_settings'}, p=>{ state.settings = {...state.settings, ...p.new}; liveRender(); });
+  liveChannel.subscribe(status=>{
+    // after the connection drops and comes back, load everything once to catch what was missed
+    if(status==='SUBSCRIBED'){ if(liveJoined) loadAll(); liveJoined = true; }
+  });
+}
+function stopLive(){ if(liveChannel){ sb.removeChannel(liveChannel); liveChannel = null; liveJoined = false; } }
+function applyLive(table, p){
+  const name = LIVE_TABLES[table], key = LIVE_KEY[table] || (r=>String(r.id));
+  if(p.eventType==='DELETE'){ const k = key(p.old||{}); state[name] = state[name].filter(r=>key(r)!==k); }
+  else {
+    const row = p.new; if(!row) return;
+    if(table==='post_numbers' && row.day !== todayKey()) return;
+    const list = state[name], i = list.findIndex(r=>key(r)===key(row));
+    if(i>=0) list[i] = {...list[i], ...row}; else if(table==='requests') list.unshift(row); else list.push(row);
+    if(BY_NAME.includes(name)) list.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+    if(table==='profiles' && row.id===state.profile?.id) state.profile = {...state.profile, ...row};
+  }
+  liveRender();
+}
+// redraw soon, but never while someone is typing in a box the screen can't restore (it waits until they leave it)
+function liveRender(){
+  clearTimeout(liveRenderTimer);
+  liveRenderTimer = setTimeout(()=>{
+    const a = document.activeElement;
+    const busy = a && a.matches && a.matches('input,textarea,select') && !a.matches('[data-bind]:not(select),[data-live],[data-addr],#msg-compose,#test-reply');
+    if(busy){ liveRenderWaiting = true; return; }
+    liveRenderWaiting = false; render();
+  }, 150);
+}
+document.addEventListener('focusout', ()=>{ if(liveRenderWaiting) setTimeout(()=>{ if(liveRenderWaiting) liveRender(); }, 50); });
+// phones pause the connection while the app is in the background; catch up when it comes back
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){ hiddenSince = Date.now(); return; }
+  if(hiddenSince && Date.now() - hiddenSince > 30000 && state.profile && !state.loading) loadAll();
+  hiddenSince = 0;
+});
 
 // Temporary Inactive volunteers go back to Active once their "until" date has passed
 async function revertExpiredTempInactive(){
@@ -2310,7 +2361,7 @@ function initEvents(){
     switch(action){
       case 'toggle-menu': state.menuOpen = !state.menuOpen; render(); break;
       case 'close-menu': if(e.target===actionEl) { state.menuOpen=false; render(); } break;
-      case 'logout': await sb.auth.signOut(); try{ history.replaceState(null, '', location.pathname); sessionStorage.removeItem('kvisa-view'); }catch(_){} state.session=null; state.profile=null; state.menuOpen=false; state.modal=null; state.draft={}; state.route='dashboard'; state.authMode='login'; state.authError=''; state.authForm={}; state.toast=null; render(); break;
+      case 'logout': stopLive(); await sb.auth.signOut(); try{ history.replaceState(null, '', location.pathname); sessionStorage.removeItem('kvisa-view'); }catch(_){} state.session=null; state.profile=null; state.menuOpen=false; state.modal=null; state.draft={}; state.route='dashboard'; state.authMode='login'; state.authError=''; state.authForm={}; state.toast=null; render(); break;
       case 'switch-auth': state.authMode = state.authMode==='login'?'signup':'login'; state.authError=''; state.authInfo=''; render(); break;
       case 'do-login': {
         const email = document.getElementById('auth-email').value.trim();

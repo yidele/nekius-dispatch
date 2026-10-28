@@ -494,3 +494,10 @@ alter table requests add column if not exists volunteer2_id uuid references volu
 alter table requests add column if not exists volunteer2_assigned_at timestamptz;
 -- touch_request() also stamps volunteer2_assigned_at, the same way as the other people
 -- ============================================================
+
+-- ============================================================
+-- Live updates (migration live_updates): open apps hear every change; row-level security still applies
+alter publication supabase_realtime add table
+  clients, volunteers, drivers, requests, recurring_requests, recurring_overrides, profiles, app_settings,
+  contacts, contact_lists, messages, posts, post_numbers, call_offers;
+-- ============================================================
