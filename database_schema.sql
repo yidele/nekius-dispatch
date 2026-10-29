@@ -513,3 +513,11 @@ alter publication supabase_realtime add table
 -- A text sent to a whole list carries the list's id, so the list has its own chat (migration messages_list_key)
 alter table messages add column if not exists list_key text;
 -- ============================================================
+
+-- ============================================================
+-- Automatic replies (migration auto_assign_replies)
+--   drivers.needs_approval: an editor's setting; that driver's replies wait for a dispatcher to Accept
+--   map_url(), render_template(), driver_message(): the database writes the same driver message as the app
+--   receive_text(): a driver replying with an open call's number gets it right away (assigned, driver message sent,
+--   anyone waiting told it was taken). Drivers needing approval and unknown numbers wait, unless another driver asks first.
+-- ============================================================

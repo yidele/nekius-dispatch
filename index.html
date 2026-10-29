@@ -874,10 +874,9 @@ function inPeriod(iso, period, from, to){
 function topCard(kind){
   const cfg = state.top[kind];
   const counts = {};
-  state.requests.filter(r=>r.status==='completed' && inPeriod(r.completed_at || r.updated_at, cfg.period, cfg.from, cfg.to)).forEach(r=>{
-    // volunteers: one per completed call; drivers: one per leg they drove
-    const ids = kind==='volunteer' ? [r.volunteer_id, r.volunteer2_id] : [r.pickup_driver_id, r.return_driver_id];
-    ids.filter(Boolean).forEach(id => counts[id] = (counts[id]||0) + 1);
+  // counted by the day of the call, once the person did their part (see creditedIds)
+  state.requests.filter(r=>inPeriod(r.requested_for || r.created_at, cfg.period, cfg.from, cfg.to)).forEach(r=>{
+    creditedIds(r, kind).forEach(id => counts[id] = (counts[id]||0) + 1);
   });
   const rows = Object.entries(counts).map(([id,n])=>[byId(state[kind+'s'], id), n]).filter(([p])=>p)
     .sort((a,b)=> b[1]-a[1] || a[0].name.localeCompare(b[0].name)).slice(0,10);
@@ -1315,15 +1314,19 @@ function statusBadgeInteractive(r){
 /* ============================= Lists, search and filters ============================= */
 // a volunteer "took a call" when they were put on a request that wasn't cancelled or left uncovered
 function hasVolunteer(r, id){ return r.volunteer_id===id || r.volunteer2_id===id; }
-function volunteerCalls(id){ return state.requests.filter(r=>hasVolunteer(r, id) && !['cancelled','not_covered'].includes(r.status)); }
+function volunteerCalls(id){ return state.requests.filter(r=>hasVolunteer(r, id)); }
 function lastCall(id){ return Math.max(0, ...volunteerCalls(id).map(r=> new Date(r.volunteer_assigned_at || r.requested_for || r.created_at).getTime())); }
 function callCount(id){ return volunteerCalls(id).length; }
-function completedCount(kind, id){
-  if(kind==='driver') return state.requests.filter(r=>r.status==='completed' && (r.pickup_driver_id===id || r.return_driver_id===id)).length;
-  if(kind==='volunteer') return state.requests.filter(r=>r.status==='completed' && hasVolunteer(r, id)).length;
-  return state.requests.filter(r=>r.status==='completed' && r[kind+'_id']===id).length;
+// who gets credit for a call: the volunteers and pickup driver once it's delivered, the return driver once it's completed;
+// a cancelled or not-covered call still counts for whoever was already on it. Drivers count once per leg they drove.
+const PICKUP_DONE = ['delivered','finished','posted_return','completed','cancelled','not_covered'];
+function creditedIds(r, kind){
+  if(kind==='volunteer') return PICKUP_DONE.includes(r.status) ? [r.volunteer_id, r.volunteer2_id].filter(Boolean) : [];
+  if(kind==='driver') return [PICKUP_DONE.includes(r.status) && r.pickup_driver_id, ['completed','cancelled','not_covered'].includes(r.status) && r.return_driver_id].filter(Boolean);
+  return r.status==='completed' && r.client_id ? [r.client_id] : [];
 }
-function countPill(n){ return `<span class="count-pill ${n?'':'zero'}" title="Completed">${icon('check')} ${n}</span>`; }
+function completedCount(kind, id){ return state.requests.reduce((n, r)=> n + creditedIds(r, kind).filter(x=>x===id).length, 0); }
+function countPill(n){ return `<span class="count-pill ${n?'':'zero'}" title="Calls">${icon('check')} ${n}</span>`; }
 function matchesSearch(p, q){
   if(!q) return true; q = q.toLowerCase();
   return [p.name, p.phone, p.address].some(x => (x||'').toLowerCase().includes(q));
@@ -1444,7 +1447,7 @@ function volunteers(){
 function drivers(){
   return peoplePage('drivers', 'driver', d => listCard('driver', d, '', [
     d.phone && `${icon('phone')} ${telLink(d.phone)}`,
-    [d.contact_sms && 'SMS', d.contact_whatsapp && 'WhatsApp'].filter(Boolean).map(m=>`<span class="tag gray">${m}</span>`).join(' '),
+    [d.contact_sms && 'SMS', d.contact_whatsapp && 'WhatsApp'].filter(Boolean).map(m=>`<span class="tag gray">${m}</span>`).join(' ') + (d.needs_approval ? ' <span class="tag mash">Needs approval</span>' : ''),
     d.status!=='active' && statusTag(d.status)]));
 }
 
@@ -1510,7 +1513,7 @@ function volunteerDetail(){
 function driverDetail(){
   const d = byId(state.drivers, state.routeId); if(!d) return `<div class="empty">Driver not found.</div>`;
   const reqs = state.requests.filter(r=>r.pickup_driver_id===d.id || r.return_driver_id===d.id);
-  return hero(d.name, statusBadgePlain(d.status) + (d.contact_sms ? `<span class="badge plain badge-white">SMS</span>` : '') + (d.contact_whatsapp ? `<span class="badge plain badge-white">WhatsApp</span>` : ''), 'editDriver', d.id)
+  return hero(d.name, statusBadgePlain(d.status) + (d.contact_sms ? `<span class="badge plain badge-white">SMS</span>` : '') + (d.contact_whatsapp ? `<span class="badge plain badge-white">WhatsApp</span>` : '') + (d.needs_approval ? `<span class="badge plain badge-white">Needs approval</span>` : ''), 'editDriver', d.id)
     + `<div class="profile-grid">` + section('user', 'Contact Information', fieldRow('user','Name',esc(d.name)) + fieldRow('phone','Phone',telLink(d.phone)) + fieldRow('mail','Email', d.email ? `<a href="mailto:${esc(d.email)}">${esc(d.email)}</a>` : '') + fieldRow('pin','Address',mapLink(d.address)), 'editDriver', d.id)
     + (d.private_note ? section('note', 'Note', `<div class="fval" style="white-space:pre-line;">${esc(d.private_note)}</div>`, 'editDriver', d.id) : '')
     + `</div>` + requestsSection(reqs, 'driver', d.id) + recordMeta(d);
@@ -1787,8 +1790,8 @@ async function testReply(phone){
   const {data, error} = await sb.rpc('receive_text', {p_phone: phone, p_body: body});
   if(error){ showToast(error.message); return; }
   state.testReply = ''; await reloadMessaging(); await markRead(phone); // it's on screen, so it's read
-  if(data?.advanced){ const {data:reqs} = await sb.from('requests').select('*').order('id',{ascending:false}); if(reqs) state.requests = reqs; }
-  showToast(data?.advanced ? 'Marked as done' : data?.offers ? `Asked for ${data.offers===1 ? 'a call' : data.offers+' calls'} · see Post` : data?.replies ? 'Answered automatically' : 'Received');
+  const {data:reqs} = await sb.from('requests').select('*').order('id',{ascending:false}); if(reqs) state.requests = reqs;
+  showToast(data?.advanced ? 'Marked as done' : data?.assigned ? `${whoIs(phone)?.name || 'The driver'} got the call` : data?.offers ? `Asked for ${data.offers===1 ? 'a call' : data.offers+' calls'} · see Post` : data?.replies ? 'Answered automatically' : 'Received');
 }
 async function markRead(phone){
   const unread = state.messages.filter(m=>m.phone===phone && m.direction==='in' && !m.read_at);
@@ -2021,7 +2024,7 @@ function offerRow(o, withCall){
   const isDriver = (o.driver_id && byId(state.drivers, o.driver_id)) || state.drivers.some(d=>normPhone(d.phone)===o.phone);
   return `<div class="offer-row">
     ${withCall ? `<span class="num-badge">${n || '–'}</span>` : ''}
-    <div class="conv-main"><b>${esc(who?.name || fmtPhone(o.phone))}</b>${withCall && r ? ` <span class="sub">${esc(shortLegMessage(r, o.leg))}</span>` : ''}
+    <div class="conv-main"><b>${esc(who?.name || fmtPhone(o.phone))}</b>${byId(state.drivers, o.driver_id)?.needs_approval ? ' <span class="tag mash">Needs approval</span>' : ''}${withCall && r ? ` <span class="sub">${esc(shortLegMessage(r, o.leg))}</span>` : ''}
       <div class="sub">${fmtMsgTime(o.created_at, true)}${who ? '' : ` · ${esc(fmtPhone(o.phone))}`}</div></div>
     <button class="btn btn-primary btn-sm btn-auto" data-action="accept-offer" data-id="${o.id}">${isDriver ? 'Accept' : 'Add driver'}</button>
   </div>`;
@@ -2197,6 +2200,7 @@ function personFormModal(kind, id){
         <div class="chip ${state.draft.contact_sms?'active':''}" data-action="toggle-chip" data-field="contact_sms">SMS</div>
         <div class="chip ${state.draft.contact_whatsapp?'active':''}" data-action="toggle-chip" data-field="contact_whatsapp">WhatsApp</div>
       </div>
+      ${isEditor() ? `<div class="toggle"><span>Needs approval</span><div class="switch ${state.draft.needs_approval?'on':''}" data-action="toggle-chip" data-field="needs_approval"><div class="knob"></div></div></div>` : ''}
       ${statusToggleField(state.draft.status)}
     `;
   }
@@ -2927,7 +2931,7 @@ async function savePerson(kind, id){
   const COLS = {
     client: ['name','phone','address','note','private_note','is_mashilach','status'],
     volunteer: ['name','phone','address','note','private_note','status','temp_inactive_from','temp_inactive_until','bag_capacity','wash_frequency','available_days'],
-    driver: ['name','phone','email','address','private_note','contact_sms','contact_whatsapp','status'],
+    driver: ['name','phone','email','address','private_note','contact_sms','contact_whatsapp','status', ...(isEditor() ? ['needs_approval'] : [])],
   }[kind];
   const d = {};
   for(const k of COLS){ if(k in state.draft){ const val = state.draft[k]; d[k] = (typeof val==='string' && val.trim()==='') ? null : (typeof val==='string' ? val.trim() : val); } }
@@ -3059,17 +3063,28 @@ function makePracticeClient(db){
       return result({});
     }
     if(!/^(i'?ll|i|can|take|and|both|please|pls|ok|#|,|&|\+|\s|\d)+$/i.test(body) || !/\d/.test(body)) return result({});
-    let offers = 0, replies = 0;
+    let offers = 0, replies = 0, assigned = 0;
     for(const n of [...new Set(body.match(/\d+/g).map(Number))]){
       const pn = db.post_numbers.find(x=>x.day===day && x.number===n);
       if(!pn){ ins({direction:'out', body:`Sorry, #${n} is not an open call. Thank you!`}); replies++; continue; }
       const r = db.requests.find(x=>x.id===pn.request_id);
       const open = r && (pn.leg==='pickup' ? !r.pickup_driver_id && ['assigned','posted_pickup'].includes(r.status) : !r.return_driver_id && ['finished','posted_return'].includes(r.status));
-      if(open){ if(!db.call_offers.some(o=>o.request_id===r.id && o.leg===pn.leg && o.phone===ph && o.status==='waiting')){
-          db.call_offers.push({id: nextId('call_offers'), request_id:r.id, leg:pn.leg, phone:ph, driver_id: drv?.id || null, message_id: inMsg.id, status:'waiting', created_at: nowIso()}); offers++; } }
-      else { ins({direction:'out', body:`Sorry, #${n} was already taken. Thank you!`, request_id: pn.request_id}); replies++; }
+      if(!open){ ins({direction:'out', body:`Sorry, #${n} was already taken. Thank you!`, request_id: pn.request_id}); replies++; continue; }
+      if(drv && !drv.needs_approval){
+        const old = {...r};
+        if(pn.leg==='pickup'){ r.pickup_driver_id = drv.id; r.status = 'posted_pickup'; } else { r.return_driver_id = drv.id; r.status = 'posted_return'; }
+        touchRequest(r, old);
+        db.call_offers.push({id: nextId('call_offers'), request_id:r.id, leg:pn.leg, phone:ph, driver_id: drv.id, message_id: inMsg.id, status:'accepted', created_at: nowIso()});
+        ins({direction:'out', body: driverMessage(r, pn.leg), request_id: r.id});
+        for(const o of db.call_offers.filter(o=>o.request_id===r.id && o.leg===pn.leg && o.status==='waiting')){
+          o.status = 'declined'; db.messages.push({id: nextId('messages'), phone:o.phone, direction:'out', body:`Sorry, #${n} was already taken. Thank you!`, status:'test', sent_by:null, request_id:r.id, created_at: nowIso()});
+        }
+        assigned++;
+      } else if(!db.call_offers.some(o=>o.request_id===r.id && o.leg===pn.leg && o.phone===ph && o.status==='waiting')){
+        db.call_offers.push({id: nextId('call_offers'), request_id:r.id, leg:pn.leg, phone:ph, driver_id: drv?.id || null, message_id: inMsg.id, status:'waiting', created_at: nowIso()}); offers++;
+      }
     }
-    return result({offers, replies});
+    return result({offers, replies, assigned});
   }
   return {
     from: query,
