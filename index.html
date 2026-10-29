@@ -370,6 +370,10 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .compose textarea{flex:1;margin:0;resize:none;border-radius:20px;padding:8px 14px;min-height:38px;line-height:1.35;}
 .send-btn{width:36px;height:36px;border-radius:50%;background:var(--primary);color:#fff;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;margin-bottom:1px;}
 .send-btn svg{width:18px;height:18px;}
+.practice-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#5C5FA0;color:#fff;border-radius:12px;padding:8px 10px 8px 14px;margin-bottom:14px;font-size:14px;}
+.practice-bar span{flex:1;min-width:150px;}
+.practice-bar .btn{background:rgba(255,255,255,.18);color:#fff;border:none;}
+.practice-bar .btn:hover{background:rgba(255,255,255,.3);}
 .send-btn:disabled{background:var(--line);cursor:default;}
 .compose-btn{color:var(--primary);flex-shrink:0;}
 .compose-btn svg{width:24px;height:24px;}
@@ -422,7 +426,7 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 /* ============================= Supabase ============================= */
 const SUPABASE_URL = 'https://icghbewmvapvrxmwxlyg.supabase.co';
 const SUPABASE_KEY = 'sb_publishable__1M7GqXmmDuYI_vPs8hB4g_GRWe6EQG';
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); // swapped for a private copy in Practice mode
 
 /* ============================= State ============================= */
 const state = {
@@ -792,7 +796,7 @@ function layout(innerHtml){
       <span class="title">${titles[state.route]||'Kvisa Dispatch'}</span>
       <button class="avatar" data-action="open-modal" data-modal="myProfile" title="My profile">${esc(initials(state.profile?.name||state.profile?.email||'?'))}</button>
     </div>
-    <div class="main">${innerHtml}</div>
+    <div class="main">${state.practice ? practiceBar() : ''}${innerHtml}</div>
     <div class="footer">Kvisa Dispatch</div>
     </div></div>
     ${fab ? `<button class="fab" data-action="open-modal" data-modal="${fab}" aria-label="Add">${icon('plus')}</button>` : ''}
@@ -1859,7 +1863,9 @@ async function saveContact(){
 function messagesPage(){
   const tabs = [['inbox','Inbox', unreadCount()], ['post','Post', state.offers.filter(o=>o.status==='waiting').length], ['lists','Lists', 0], ['contacts','Contacts', 0]];
   const view = {inbox: inboxView, post: postView, lists: listsView, contacts: contactsView}[state.msgTab] || inboxView;
-  return `${state.settings.sms_connected ? '' : `<div style="margin-bottom:10px;"><span class="tag ${testMode() ? 'mash' : 'gray'}">${icon('alert')} ${testMode() ? 'Test mode · nothing is texted' : 'Texting not connected'}</span></div>`}
+  return `${state.settings.sms_connected && state.practice ? '' : `<div class="row-between" style="margin-bottom:10px;gap:8px;">
+      ${state.settings.sms_connected ? '<span></span>' : `<span class="tag ${testMode() ? 'mash' : 'gray'}">${icon('alert')} ${testMode() ? 'Test mode · nothing is texted' : 'Texting not connected'}</span>`}
+      ${isEditor() && !state.practice ? `<button class="btn btn-outline btn-sm btn-auto" data-action="practice-start">Practice mode</button>` : ''}</div>`}
     <div class="tabs">${tabs.map(([k,l,n])=>`<div class="tab ${state.msgTab===k?'active':''}" data-action="msg-tab" data-tab="${k}">${l}${n?`<span class="count">${n}</span>`:''}</div>`).join('')}</div>
     ${view()}`;
 }
@@ -2463,7 +2469,7 @@ function initEvents(){
     switch(action){
       case 'toggle-menu': state.menuOpen = !state.menuOpen; render(); break;
       case 'close-menu': if(e.target===actionEl) { state.menuOpen=false; render(); } break;
-      case 'logout': stopLive(); await sb.auth.signOut(); try{ history.replaceState(null, '', location.pathname); sessionStorage.removeItem('kvisa-view'); }catch(_){} state.session=null; state.profile=null; state.menuOpen=false; state.modal=null; state.draft={}; state.route='dashboard'; state.authMode='login'; state.authError=''; state.authForm={}; state.toast=null; render(); break;
+      case 'logout': stopLive(); if(inPractice()){ sb = realSb; state.practice = false; try{ localStorage.removeItem(PRACTICE_KEY); }catch(_){} } await sb.auth.signOut(); try{ history.replaceState(null, '', location.pathname); sessionStorage.removeItem('kvisa-view'); }catch(_){} state.session=null; state.profile=null; state.menuOpen=false; state.modal=null; state.draft={}; state.route='dashboard'; state.authMode='login'; state.authError=''; state.authForm={}; state.toast=null; render(); break;
       case 'switch-auth': state.authMode = state.authMode==='login'?'signup':'login'; state.authError=''; state.authInfo=''; render(); break;
       case 'do-login': {
         const email = document.getElementById('auth-email').value.trim();
@@ -2490,6 +2496,9 @@ function initEvents(){
         if(state.modal.type==='newRequest'){ state.volDays = []; state.volSort = 'rotation'; }
         render(); break;
       case 'close-modal': closeModal(); break;
+      case 'practice-start': if(confirm('Practice mode: you get a private copy of everything to try things out. Nothing you do is saved or seen by other dispatchers. Start?')) await startPractice(true); break;
+      case 'practice-reset': if(confirm('Start the practice over with a fresh copy of the real data?')) await startPractice(true); break;
+      case 'practice-exit': await exitPractice(); break;
       case 'msg-tab': state.msgTab = actionEl.getAttribute('data-tab'); render(); break;
       case 'open-thread': {
         const phone = actionEl.getAttribute('data-phone');
@@ -2945,6 +2954,156 @@ async function savePerson(kind, id){
   state.modal = null; state.draft = {}; render();
 }
 
+/* ============================= Practice mode ============================= */
+// An editor can try anything on a private copy of the data kept in this browser. Nothing reaches the real
+// database, so dispatchers working at the same time see none of it. The copy answers the app's requests
+// the same way the database does (including incoming test replies and "done").
+const realSb = sb;
+const PRACTICE_KEY = 'kvisa-practice';
+const PRACTICE_TABLES = { clients:'clients', volunteers:'volunteers', drivers:'drivers', requests:'requests', profiles:'profiles', invites:'invites',
+  recurring_requests:'recurring', recurring_overrides:'overrides', contacts:'contacts', contact_lists:'lists', messages:'messages', posts:'posts',
+  post_numbers:'postNumbers', call_offers:'offers' };
+function inPractice(){ return sb !== realSb; }
+function practiceSave(db){ try{ localStorage.setItem(PRACTICE_KEY, JSON.stringify(db)); }catch(_){} }
+function practiceLoad(){ try{ return JSON.parse(localStorage.getItem(PRACTICE_KEY) || 'null'); }catch(_){ return null; } }
+function practiceSnapshot(){
+  const db = {};
+  for(const [table, key] of Object.entries(PRACTICE_TABLES)) db[table] = JSON.parse(JSON.stringify(state[key] || []));
+  db.app_settings = [{...JSON.parse(JSON.stringify(state.settings)), id:1, sms_test:true, sms_connected:false}];
+  return db;
+}
+function makePracticeClient(db){
+  const nowIso = () => new Date().toISOString();
+  const nextId = table => Math.max(0, ...db[table].map(r=>Number(r.id)||0)) + 1;
+  const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2));
+  const NUMERIC = ['requests','messages','posts','call_offers','recurring_requests'];
+  const KEY = { post_numbers: r=>r.day+'|'+r.number, recurring_overrides: r=>r.recurring_id+'|'+r.run_date, invites: r=>r.email };
+  // the same bookkeeping the database does when a request changes
+  function touchRequest(row, old){
+    row.updated_at = nowIso();
+    if(row.status==='completed' && (!old || old.status!=='completed')) row.completed_at = nowIso();
+    else if(row.status!=='completed') row.completed_at = null;
+    for(const [f, ts] of [['volunteer_id','volunteer_assigned_at'],['volunteer2_id','volunteer2_assigned_at'],['pickup_driver_id','pickup_assigned_at'],['return_driver_id','return_assigned_at']]){
+      if(!row[f]) row[ts] = null; else if(!old || row[f] !== old[f]) row[ts] = nowIso();
+    }
+  }
+  function query(table){
+    let op = 'select', payload = null, filters = [], single = false, maybe = false, orderBy = null, lim = null;
+    const api = {
+      select(){ return api; }, insert(p){ op='insert'; payload=p; return api; }, upsert(p){ op='upsert'; payload=p; return api; },
+      update(p){ op='update'; payload=p; return api; }, delete(){ op='delete'; return api; },
+      eq(k, v){ filters.push([k, v]); return api; }, order(col, o){ orderBy = [col, o?.ascending !== false]; return api; }, limit(n){ lim = n; return api; },
+      single(){ single = true; return api; }, maybeSingle(){ maybe = true; return api; },
+      then(res, rej){ return Promise.resolve(run()).then(res, rej); },
+    };
+    const match = r => filters.every(([k, v]) => String(r[k]) === String(v));
+    function insertOne(p){
+      const row = {...p};
+      if(!('id' in row) && !KEY[table]) row.id = NUMERIC.includes(table) ? nextId(table) : uuid();
+      if(!row.created_at) row.created_at = nowIso();
+      if(['clients','volunteers','drivers','contacts','contact_lists','recurring_requests','posts','messages'].includes(table) && !('created_by' in row) && table!=='messages') row.created_by = state.profile?.id;
+      if(table==='requests'){ row.created_by = row.created_by || state.profile?.id; touchRequest(row, null); }
+      if(table==='recurring_requests'){ row.active = row.active ?? true; row.day_people = row.day_people || {}; }
+      if(['clients','volunteers','drivers'].includes(table) && !row.status) row.status = 'active';
+      if(table==='volunteers' && !row.available_days) row.available_days = [];
+      if(table==='call_offers' && !row.status) row.status = 'waiting';
+      if(table==='post_numbers' && db.post_numbers.some(x=>x.day===row.day && x.number===row.number)) return {error:{message:'duplicate key'}};
+      db[table].push(row); return {row};
+    }
+    function run(){
+      const rows = db[table] || (db[table] = []);
+      let out;
+      if(op==='upsert'){
+        const key = KEY[table] || (r=>String(r.id));
+        const ex = rows.find(r=>key(r)===key(payload));
+        if(ex){ Object.assign(ex, payload); out = [ex]; }
+        else { const r = insertOne(payload); if(r.error) return {data:null, error:r.error}; out = [r.row]; }
+      } else if(op==='insert'){
+        out = [];
+        for(const p of Array.isArray(payload) ? payload : [payload]){ const r = insertOne(p); if(r.error) return {data:null, error:r.error}; out.push(r.row); }
+        if(!Array.isArray(payload)) single = true;
+      } else if(op==='update'){
+        out = rows.filter(match);
+        for(const r of out){ const old = {...r}; Object.assign(r, payload); if(table==='requests') touchRequest(r, old); }
+      } else if(op==='delete'){
+        db[table] = rows.filter(r=>!match(r)); out = [];
+      } else {
+        out = rows.filter(match);
+        if(orderBy){ const [c, asc] = orderBy; out = out.slice().sort((a,b)=> (a[c] > b[c] ? 1 : a[c] < b[c] ? -1 : 0) * (asc ? 1 : -1)); }
+        if(lim) out = out.slice(0, lim);
+      }
+      if(op !== 'select') practiceSave(db);
+      out = JSON.parse(JSON.stringify(out));
+      return {data: (single || maybe) ? (out[0] || null) : out, error: single && !out[0] && op !== 'delete' ? {message:'Not found'} : null};
+    }
+    return api;
+  }
+  const digits10 = p => String(p||'').replace(/\D/g,'').slice(-10);
+  // the same handling as the database's receive_text(): numbers ask for calls, "done" moves a call on
+  function receiveText(phoneIn, bodyIn){
+    const ph = digits10(phoneIn), body = String(bodyIn||'').trim(), day = todayKey();
+    if(ph.length !== 10 || !body) return {data:null, error:{message:'phone and message are required'}};
+    const ins = r => { const m = {phone:ph, sent_by:null, status:'test', ...r}; db.messages.push({...m, id: nextId('messages'), created_at: nowIso()}); return db.messages[db.messages.length-1]; };
+    const inMsg = ins({direction:'in', body, status:'received'});
+    const drv = db.drivers.find(d=>digits10(d.phone)===ph);
+    const result = (o) => { practiceSave(db); return {data:{message_id: inMsg.id, offers:0, replies:0, advanced:0, ...o}, error:null}; };
+    if(/^(done|delivered|dropped off|drop off|dropped|complete|completed|finished)[\s.!,#]*\d*[\s.!]*$/i.test(body)){
+      if(!drv) return result({});
+      const no = (body.match(/\d+/)||[])[0];
+      const open = db.requests.filter(r=>(r.pickup_driver_id===drv.id && r.status==='posted_pickup') || (r.return_driver_id===drv.id && r.status==='posted_return'));
+      const r = no ? open.find(q=>db.post_numbers.some(p=>p.day===day && p.number===Number(no) && p.request_id===q.id && p.leg===(q.status==='posted_pickup' ? 'pickup' : 'return')))
+                   : open.length===1 ? open[0] : null;
+      if(r){ const old = {...r}; r.status = r.status==='posted_pickup' ? 'delivered' : 'completed'; touchRequest(r, old);
+        ins({direction:'out', body:'Thank you! Marked as done.', request_id:r.id}); return result({replies:1, advanced:1}); }
+      if(open.length > 1){ ins({direction:'out', body:'Which call is done? Reply done with its number, like: done 2'}); return result({replies:1}); }
+      return result({});
+    }
+    if(!/^(i'?ll|i|can|take|and|both|please|pls|ok|#|,|&|\+|\s|\d)+$/i.test(body) || !/\d/.test(body)) return result({});
+    let offers = 0, replies = 0;
+    for(const n of [...new Set(body.match(/\d+/g).map(Number))]){
+      const pn = db.post_numbers.find(x=>x.day===day && x.number===n);
+      if(!pn){ ins({direction:'out', body:`Sorry, #${n} is not an open call. Thank you!`}); replies++; continue; }
+      const r = db.requests.find(x=>x.id===pn.request_id);
+      const open = r && (pn.leg==='pickup' ? !r.pickup_driver_id && ['assigned','posted_pickup'].includes(r.status) : !r.return_driver_id && ['finished','posted_return'].includes(r.status));
+      if(open){ if(!db.call_offers.some(o=>o.request_id===r.id && o.leg===pn.leg && o.phone===ph && o.status==='waiting')){
+          db.call_offers.push({id: nextId('call_offers'), request_id:r.id, leg:pn.leg, phone:ph, driver_id: drv?.id || null, message_id: inMsg.id, status:'waiting', created_at: nowIso()}); offers++; } }
+      else { ins({direction:'out', body:`Sorry, #${n} was already taken. Thank you!`, request_id: pn.request_id}); replies++; }
+    }
+    return result({offers, replies});
+  }
+  return {
+    from: query,
+    rpc: async (fn, args) => {
+      if(fn==='receive_text') return receiveText(args.p_phone, args.p_body);
+      if(fn==='set_my_name'){ const p = db.profiles.find(x=>x.id===state.profile?.id); if(p) p.name = args.new_name; practiceSave(db); return {data:null, error:null}; }
+      return {data:0, error:null}; // recurring requests aren't created inside the practice copy
+    },
+    auth: realSb.auth,
+    channel(){ const ch = { on(){ return ch; }, subscribe(){ return ch; } }; return ch; },
+    removeChannel(){},
+  };
+}
+async function startPractice(fresh){
+  let db = fresh ? null : practiceLoad();
+  if(!db){ db = practiceSnapshot(); practiceSave(db); }
+  stopLive();
+  sb = makePracticeClient(db);
+  state.practice = true;
+  await loadAll();
+  showToast('Practice mode · nothing is saved');
+}
+async function exitPractice(){
+  try{ localStorage.removeItem(PRACTICE_KEY); }catch(_){}
+  stopLive(); sb = realSb; state.practice = false;
+  await loadAll();
+  showToast('Back to the real app');
+}
+function practiceBar(){
+  return `<div class="practice-bar">${icon('alert')}<span><b>Practice mode</b> · nothing is saved</span>
+    <button class="btn btn-sm btn-auto" data-action="practice-reset">Reset</button>
+    <button class="btn btn-sm btn-auto" data-action="practice-exit">Exit</button></div>`;
+}
+
 /* ============================= Auth bootstrap ============================= */
 async function onAuthed(){
   const {data:{session}} = await sb.auth.getSession();
@@ -2954,6 +3113,9 @@ async function onAuthed(){
     state.profile = profile;
     if(!profile){ state.loading = false; render(); return; }
     restoreLocation();
+    // a refresh keeps an editor in Practice mode, on the same private copy
+    const practice = profile.role==='editor' && practiceLoad();
+    if(practice){ sb = makePracticeClient(practice); state.practice = true; }
     state.loading = true; render();
     await loadAll();
   } else {
