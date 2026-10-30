@@ -1314,7 +1314,8 @@ function statusBadgeInteractive(r){
 /* ============================= Lists, search and filters ============================= */
 // a volunteer "took a call" when they were put on a request that wasn't cancelled or left uncovered
 function hasVolunteer(r, id){ return r.volunteer_id===id || r.volunteer2_id===id; }
-function volunteerCalls(id){ return state.requests.filter(r=>hasVolunteer(r, id)); }
+// the rotation skips cancelled and not-covered calls, so that volunteer isn't pushed down (they still count in her number of calls)
+function volunteerCalls(id){ return state.requests.filter(r=>hasVolunteer(r, id) && !['cancelled','not_covered'].includes(r.status)); }
 function lastCall(id){ return Math.max(0, ...volunteerCalls(id).map(r=> new Date(r.volunteer_assigned_at || r.requested_for || r.created_at).getTime())); }
 function callCount(id){ return volunteerCalls(id).length; }
 // who gets credit for a call: the volunteers and pickup driver once it's delivered, the return driver once it's completed;
