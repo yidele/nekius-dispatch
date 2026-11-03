@@ -388,7 +388,7 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .post-actions .btn{flex:1;}
 /* on phones and tablets an open conversation fills the screen, like a messaging app */
 @media (max-width: 1023px){
-  .thread.full{position:fixed;inset:0;z-index:40;border:none;border-radius:0;height:100vh;height:100dvh;}
+  .thread.full{position:fixed;left:0;right:0;top:var(--vvt, 0px);z-index:40;border:none;border-radius:0;height:100vh;height:var(--vvh, 100dvh);}
   .thread.full .thread-head{padding-top:calc(10px + env(safe-area-inset-top));}
   .thread.full .bubbles{flex:1;min-height:0;max-height:none;}
   .thread.full > .compose:last-child, .thread.full .test-reply .compose{padding-bottom:calc(8px + env(safe-area-inset-bottom));}
@@ -410,11 +410,18 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .member-chip a{cursor:pointer;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(18,59,51,.12);font-size:15px;line-height:1;}
 .nav-count{margin-left:auto;background:var(--primary);color:#fff;border-radius:999px;font-size:11px;padding:1px 8px;font-weight:700;}
 @media (min-width: 1024px){
-  .inbox{display:grid;grid-template-columns:minmax(280px,360px) 1fr;gap:16px;align-items:start;}
+  .inbox{display:grid;grid-template-columns:minmax(240px,360px) 1fr;gap:16px;align-items:start;}
+  @media (max-width: 1279px){ .inbox{grid-template-columns:minmax(220px,280px) 1fr;} }
   .inbox.has-thread .conv-list{display:block;}
   .thread-empty{display:flex;align-items:center;justify-content:center;min-height:60vh;}
   .thread-back{display:none;}
-  .thread{position:sticky;top:76px;height:calc(100vh - 110px);}
+  /* the Inbox fills the screen exactly: the list and the conversation scroll inside it, the message box stays at the bottom */
+  .shell-main.fill{height:var(--vvh, 100dvh);overflow:hidden;}
+  .shell-main.fill .main{display:flex;flex-direction:column;min-height:0;padding-bottom:16px;}
+  .shell-main.fill .footer{display:none;}
+  .shell-main.fill .inbox{flex:1;min-height:0;align-items:stretch;}
+  .shell-main.fill .conv-list{overflow-y:auto;min-height:0;}
+  .shell-main.fill .thread{min-height:0;}
   .thread .bubbles{flex:1;min-height:0;max-height:none;}
 }
 </style>
@@ -501,6 +508,15 @@ function restoreLocation(){
   if(routes[route] && (route !== 'settings' || isEditor())){ state.route = route; state.routeId = id || null; }
   try{ const v = JSON.parse(sessionStorage.getItem('kvisa-view') || '{}'); for(const k of ['dispatchTab','msgTab','msgPhone']) if(k in v) state[k] = v[k]; }catch(_){}
 }
+// the part of the screen not covered by the keyboard, so the message box stays visible while typing
+function fitToScreen(){
+  const vv = window.visualViewport; if(!vv) return;
+  document.documentElement.style.setProperty('--vvh', vv.height + 'px');
+  document.documentElement.style.setProperty('--vvt', vv.offsetTop + 'px');
+}
+if(window.visualViewport){ visualViewport.addEventListener('resize', fitToScreen); visualViewport.addEventListener('scroll', fitToScreen); }
+window.addEventListener('orientationchange', ()=>setTimeout(fitToScreen, 300));
+fitToScreen();
 function afterRender(){
   // a conversation opens at its newest message
   const bubbles = document.querySelector('.bubbles'); if(bubbles) bubbles.scrollTop = bubbles.scrollHeight;
@@ -790,7 +806,7 @@ function layout(innerHtml){
     : {clients:'addClient', volunteers:'addVolunteer', drivers:'addDriver', recurring: isEditor() ? 'recurringForm' : null}[state.route];
   return `<div class="shell">
     <aside class="side-nav">${navPanel()}</aside>
-    <div class="shell-main">
+    <div class="shell-main ${state.route==='messages' && state.msgTab==='inbox' ? 'fill' : ''}">
     <div class="header">
       <button class="icon-btn menu-btn" data-action="toggle-menu" aria-label="Menu">${icon('menu')}</button>
       <span class="title">${titles[state.route]||'Kvisa Dispatch'}</span>
