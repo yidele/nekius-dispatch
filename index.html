@@ -486,13 +486,28 @@ const ALL_STATUSES = [...STATUS_FLOW, 'not_covered', 'cancelled'];
 // Both legs share the status name "Posted"; tabs and menus say which leg
 const TAB_LABELS = { todo:'To Do', posted_pickup:'Posted · Pickup', posted_return:'Posted · Return' };
 
+// areas that scroll on their own (a window, a list, a conversation) keep their place when the screen redraws,
+// as long as you're still looking at the same thing; opening something new starts at its top
+const SCROLLERS = ['.modal', '.picker-list', '.conv-list', '.to-results', '.drawer-nav', '.bubbles'];
+let lastViewKey = '';
+function viewKey(){ return [state.route, state.routeId, state.modal?.type, state.modal?.id, state.modal?.field, state.msgTab, state.msgPhone].join('|'); }
 function render(){
   // remember which box has the cursor so a re-render (e.g. a toast disappearing) doesn't take it away
   const a = document.activeElement, keys = ['id','data-live','data-bind'];
   const key = a && a.matches && a.matches('input,textarea') ? keys.map(k=>[k, a.getAttribute(k)]).find(([,v])=>v) : null;
   let pos = null; try{ pos = a.selectionStart; }catch(_){}
+  const scrolls = {};
+  for(const sel of SCROLLERS) document.querySelectorAll(sel).forEach((el, i)=>{ scrolls[sel+i] = {top: el.scrollTop, atBottom: el.scrollHeight - el.scrollTop - el.clientHeight < 40}; });
+  const sameView = viewKey() === lastViewKey;
   const r = routes[state.route] || routes.dashboard;
   document.getElementById('app').innerHTML = layout(r());
+  lastViewKey = viewKey();
+  for(const sel of SCROLLERS) document.querySelectorAll(sel).forEach((el, i)=>{
+    const was = scrolls[sel+i];
+    // a conversation opens at its newest message, and follows new ones unless you scrolled up to read
+    if(sel === '.bubbles' && (!sameView || !was || was.atBottom)){ el.scrollTop = el.scrollHeight; return; }
+    if(sameView && was) el.scrollTop = was.top;
+  });
   if(state.session && state.profile && !state.loading) saveLocation();
   if(key){
     const el = document.querySelector(key[0]==='id' ? '#'+CSS.escape(key[1]) : `[${key[0]}="${key[1]}"]`);
@@ -526,8 +541,6 @@ if(window.visualViewport){ visualViewport.addEventListener('resize', fitToScreen
 window.addEventListener('orientationchange', ()=>setTimeout(fitToScreen, 300));
 fitToScreen();
 function afterRender(){
-  // a conversation opens at its newest message
-  const bubbles = document.querySelector('.bubbles'); if(bubbles) bubbles.scrollTop = bubbles.scrollHeight;
   if(state.route === 'dispatch'){
     requestAnimationFrame(()=>{
       const el = document.querySelector('.tab.active');
@@ -1968,7 +1981,7 @@ function inboxView(){
   ].sort((a,b)=> new Date(b.at) - new Date(a.at)).map(r=>r.html).join('');
   // while searching, people you haven't texted yet show up too
   const talked = new Set(conversations().map(c=>c.phone));
-  const others = q ? everyone().filter(p=>!talked.has(p.phone) && match(p.name, p.phone)).sort((a,b)=>a.name.localeCompare(b.name)).slice(0, 20) : [];
+  const others = q ? everyone().filter(p=>!talked.has(p.phone) && match(p.name, p.phone)).sort((a,b)=>a.name.localeCompare(b.name)).slice(0, 50) : [];
   const thread = state.msgPhone==='new' ? newThreadView() : state.msgPhone==='posts' ? postsThread() : state.msgPhone?.startsWith('list:') ? listThreadView(state.msgPhone.slice(5)) : state.msgPhone ? threadView(state.msgPhone) : '';
   return `<div class="inbox ${state.msgPhone ? 'has-thread' : ''}">
     <div class="conv-list">
@@ -2130,7 +2143,7 @@ function contactsView(){
 /* ---------- Messages windows ---------- */
 function peopleMatches(q, skip){
   const ql = q.toLowerCase(), digits = q.replace(/\D/g,'');
-  return everyone().filter(p=>(p.name.toLowerCase().includes(ql) || (digits.length>=3 && p.phone.includes(digits))) && !skip(p)).slice(0, 15);
+  return everyone().filter(p=>(p.name.toLowerCase().includes(ql) || (digits.length>=3 && p.phone.includes(digits))) && !skip(p)).slice(0, 50);
 }
 function personPick(p, action){
   return `<div class="picker-item" data-action="${action}" data-kind="${p.kind}" data-id="${p.id}"><div><b>${esc(p.name)}</b><div class="sub">${kindLabel(p.kind)} · ${esc(fmtPhone(p.phone))}</div></div><span class="sub">Add</span></div>`;
@@ -2287,7 +2300,7 @@ function pickerResults(field){
     : p.address || '';
   const naToday = v => v.unavailable_at && localDay(v.unavailable_at).getTime() === localDay(new Date()).getTime();
   return `<div class="picker-list">
-    ${list.slice(0, 30).map(p=>`<div class="picker-item" data-action="pick" data-field="${field}" data-value="${p.id}">
+    ${list.map(p=>`<div class="picker-item" data-action="pick" data-field="${field}" data-value="${p.id}">
       <div>${kind==='volunteer' ? `<span class="dot ${volunteerReadiness(p)}" style="margin-right:6px;"></span>` : ''}<span class="name-link" data-nav="${kind}" data-id="${p.id}">${esc(p.name)}</span>${kind==='volunteer' && state.volDays.length && daysLabel(p, state.volDays) ? ` <span class="tag">Available ${daysLabel(p, state.volDays)}</span>` : ''}${kind==='volunteer' && p.status==='temporary_inactive' ? ` <span class="tag gray">${esc(awayLabel(p))}</span>` : ''}
         ${sub(p) ? `<div class="sub">${esc(sub(p))}</div>` : ''}${p.phone || p.phone2 ? `<div class="sub picker-phones">${icon('phone')} ${phonesHtml(p)}</div>` : ''}</div>
       <div class="picker-right">
