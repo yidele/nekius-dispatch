@@ -521,3 +521,11 @@ alter table messages add column if not exists list_key text;
 --   receive_text(): a driver replying with an open call's number gets it right away (assigned, driver message sent,
 --   anyone waiting told it was taken). Drivers needing approval and unknown numbers wait, unless another driver asks first.
 -- ============================================================
+
+-- ============================================================
+-- Second phone numbers and "Not available" (migration second_phone_and_not_available)
+alter table clients add column if not exists phone2 text;
+alter table volunteers add column if not exists phone2 text;
+alter table drivers add column if not exists phone2 text;
+alter table volunteers add column if not exists unavailable_at timestamptz;  -- counts like a turn in the rotation
+-- ============================================================

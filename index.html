@@ -191,6 +191,14 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .msg-preview{white-space:pre-wrap;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:13.5px;color:var(--ink-soft);}
 .send-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
 .send-grid .btn{text-decoration:none;}
+.picker-right{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.picker-phones a{font-weight:600;}
+.na-btn{display:inline-flex;align-items:center;gap:5px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink-soft);border-radius:999px;padding:5px 10px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;}
+.na-btn svg{width:13px;height:13px;}
+.na-btn:hover{border-color:var(--danger);color:var(--danger);}
+.na-btn.on{background:var(--danger-light);border-color:var(--danger);color:var(--danger);}
+/* phones: just the icon */
+@media (max-width: 639px){ .na-btn span{display:none;} .na-btn{padding:7px;} }
 .add-link{display:inline-block;margin:6px 0 2px;font-size:13px;font-weight:600;color:var(--primary);cursor:pointer;}
 .added-on{font-size:11px;color:var(--ink-faint);font-weight:600;margin:10px 0 -4px 2px;}
 /* ---------- layout helpers (one column on phones) ---------- */
@@ -1005,6 +1013,8 @@ function addedOn(r, iso){
   if(base && localDay(iso).getTime() === localDay(base).getTime()) return '';
   return new Date(iso).toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
 }
+// main number first, then the other one, each one tap to call
+function phonesHtml(p){ return [p.phone, p.phone2].filter(Boolean).map(telLink).join(' &middot; '); }
 function telLink(phone){ return phone ? `<a href="tel:${esc(phone.replace(/[^\d+]/g,''))}">${esc(phone)}</a>` : ''; }
 // opens the device's maps app (Google Maps link works on iPhone, iPad and Android)
 // kept short so it reads well in a text: words joined with + (commas dropped)
@@ -1250,7 +1260,7 @@ function personBox(role, kind, p, opts={}){
   return `${opts.when ? `<div class="added-on">${esc(opts.when)}</div>` : ''}<div class="person-box ${opts.faded?'faded':''} ${opts.when?'dated':''}">
     ${opts.removeField ? `<button class="box-x" title="Remove ${role.toLowerCase()}" data-action="unassign" data-id="${opts.reqId}" data-field="${opts.removeField}">${icon('x')}</button>` : ''}
     <span class="role">${role}</span>
-    <span class="name-link" data-nav="${kind}" data-id="${p.id}">${esc(p.name)}</span>${p.phone ? ` &middot; ${telLink(p.phone)}` : ''}
+    <span class="name-link" data-nav="${kind}" data-id="${p.id}">${esc(p.name)}</span>${p.phone || p.phone2 ? ` &middot; ${phonesHtml(p)}` : ''}
     ${opts.address && p.address ? `<div class="addr">${mapLink(p.address)}</div>` : ''}
   </div>`;
 }
@@ -1332,7 +1342,10 @@ function statusBadgeInteractive(r){
 function hasVolunteer(r, id){ return r.volunteer_id===id || r.volunteer2_id===id; }
 // the rotation skips cancelled and not-covered calls, so that volunteer isn't pushed down (they still count in her number of calls)
 function volunteerCalls(id){ return state.requests.filter(r=>hasVolunteer(r, id) && !['cancelled','not_covered'].includes(r.status)); }
-function lastCall(id){ return Math.max(0, ...volunteerCalls(id).map(r=> new Date(r.volunteer_assigned_at || r.requested_for || r.created_at).getTime())); }
+function lastCall(id){ return Math.max(lastRealCall(id), unavailableTime(id)); }
+function lastRealCall(id){ return Math.max(0, ...volunteerCalls(id).map(r=> new Date(r.volunteer_assigned_at || r.requested_for || r.created_at).getTime())); }
+// a "not available" counts like a turn, so she moves down and isn't asked first again tomorrow
+function unavailableTime(id){ const v = byId(state.volunteers, id); return v?.unavailable_at ? new Date(v.unavailable_at).getTime() : 0; }
 function callCount(id){ return volunteerCalls(id).length; }
 // who gets credit for a call: the volunteers and pickup driver once it's delivered, the return driver once it's completed;
 // a cancelled or not-covered call still counts for whoever was already on it. Drivers count once per leg they drove.
@@ -1348,9 +1361,25 @@ function matchesSearch(p, q){
   if(!q) return true; q = q.toLowerCase();
   return [p.name, p.phone, p.address].some(x => (x||'').toLowerCase().includes(q));
 }
-function lastCallLabel(id){ const t = lastCall(id); return t ? 'Last call: ' + new Date(t).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : 'No calls yet'; }
+function lastCallLabel(id){
+  const day = t => new Date(t).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  const call = lastRealCall(id), na = unavailableTime(id);
+  if(na > call) return 'Not available: ' + (dayLabel(new Date(na).toISOString())==='Today' ? 'today' : day(na));
+  return call ? 'Last call: ' + day(call) : 'No calls yet';
+}
+// temporarily inactive: away only between the dates (no dates = away until set back to Active)
+function isAway(v, when = new Date()){
+  if(v.status !== 'temporary_inactive') return false;
+  const today = ymd(when);
+  return (!v.temp_inactive_from || v.temp_inactive_from <= today) && (!v.temp_inactive_until || v.temp_inactive_until >= today);
+}
+function awayLabel(v){
+  const d = s => new Date(s + 'T00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  const f = v.temp_inactive_from, u = v.temp_inactive_until;
+  return f && u ? `Away ${d(f)} – ${d(u)}` : u ? `Away until ${d(u)}` : f ? `Away from ${d(f)}` : 'Temporarily inactive';
+}
 function volunteerSub(v){
-  return [lastCallLabel(v.id), v.phone, daysLabel(v) && `Available: ${daysLabel(v)}`, v.bag_capacity && capacityLabel(v.bag_capacity)].filter(Boolean).join(' · ');
+  return [lastCallLabel(v.id), daysLabel(v) && `Available: ${daysLabel(v)}`, v.bag_capacity && capacityLabel(v.bag_capacity)].filter(Boolean).join(' · ');
 }
 // readiness: green = ready, amber = due, gray = no completed washes yet
 const READY_LABEL = { green:'Ready', amber:'Due', gray:'New' };
@@ -1456,14 +1485,14 @@ function volunteers(){
     return listCard('volunteer', v, `<span class="dot ${volunteerReadiness(v)}"></span>`, [
       (days.length && match) ? `<span class="tag">Available ${days.length===1 ? DAY_LONG[days[0]] : match}</span>` : '',
       `${icon('history')} ${lastCallLabel(v.id)}`,
-      v.phone && `${icon('phone')} ${telLink(v.phone)}`, v.address && `${icon('pin')} ${mapLink(v.address)}`,
+      (v.phone || v.phone2) && `${icon('phone')} ${phonesHtml(v)}`, v.address && `${icon('pin')} ${mapLink(v.address)}`,
       [daysLabel(v) && `${icon('calendar')} ${daysLabel(v)}`, v.bag_capacity && `${icon('bag')} ${capacityLabel(v.bag_capacity)}`].filter(Boolean).join(' &nbsp; '),
       v.status!=='active' && statusTag(v.status)]);
   });
 }
 function drivers(){
   return peoplePage('drivers', 'driver', d => listCard('driver', d, '', [
-    d.phone && `${icon('phone')} ${telLink(d.phone)}`,
+    (d.phone || d.phone2) && `${icon('phone')} ${phonesHtml(d)}`,
     [d.contact_sms && 'SMS', d.contact_whatsapp && 'WhatsApp'].filter(Boolean).map(m=>`<span class="tag gray">${m}</span>`).join(' ') + (d.needs_approval ? ' <span class="tag mash">Needs approval</span>' : ''),
     d.status!=='active' && statusTag(d.status)]));
 }
@@ -1509,7 +1538,7 @@ function clientDetail(){
   const c = byId(state.clients, state.routeId); if(!c) return `<div class="empty">Client not found.</div>`;
   const reqs = state.requests.filter(r=>r.client_id===c.id);
   return hero(c.name, statusBadgePlain(c.status) + (c.is_mashilach ? `<span class="badge plain badge-white">Mashilach</span>` : ''), 'editClient', c.id)
-    + `<div class="profile-grid">` + section('user', 'Contact Information', fieldRow('user','Name',esc(c.name)) + fieldRow('phone','Phone',telLink(c.phone)), 'editClient', c.id)
+    + `<div class="profile-grid">` + section('user', 'Contact Information', fieldRow('user','Name',esc(c.name)) + fieldRow('phone','Main phone',telLink(c.phone)) + (c.phone2 ? fieldRow('phone','Other phone',telLink(c.phone2)) : ''), 'editClient', c.id)
     + section('pin', 'Address', fieldRow('pin','Address',mapLink(c.address)) + fieldRow('info','Address instructions',esc(c.note||'')), 'editClient', c.id)
     + (c.private_note ? section('note', 'Note', `<div class="fval" style="white-space:pre-line;">${esc(c.private_note)}</div>`, 'editClient', c.id) : '')
     + `</div>` + requestsSection(reqs, 'client', c.id) + recordMeta(c);
@@ -1519,11 +1548,11 @@ function volunteerDetail(){
   const reqs = state.requests.filter(r=>hasVolunteer(r, v.id));
   const rd = volunteerReadiness(v);
   return hero(v.name, statusBadgePlain(v.status) + `<span class="badge plain badge-white">${READY_LABEL[rd]}</span>`, 'editVolunteer', v.id, `<span class="dot ${rd}"></span>`)
-    + `<div class="profile-grid">` + section('user', 'Contact Information', fieldRow('user','Name',esc(v.name)) + fieldRow('phone','Phone',telLink(v.phone)), 'editVolunteer', v.id)
+    + `<div class="profile-grid">` + section('user', 'Contact Information', fieldRow('user','Name',esc(v.name)) + fieldRow('phone','Main phone',telLink(v.phone)) + (v.phone2 ? fieldRow('phone','Other phone',telLink(v.phone2)) : ''), 'editVolunteer', v.id)
     + section('pin', 'Address', fieldRow('pin','Address',mapLink(v.address)) + fieldRow('info','Address instructions',esc(v.note||'')), 'editVolunteer', v.id)
     + section('wash', 'Washing', fieldRow('calendar','Available days',esc(daysLabel(v))) + fieldRow('bag','Bag capacity', v.bag_capacity ? esc(capacityLabel(v.bag_capacity)) : '')
         + fieldRow('wash','Wash frequency',esc(WASH_FREQ[v.wash_frequency]||''))
-        + (v.status==='temporary_inactive' ? fieldRow('info','Away', `${esc(v.temp_inactive_from||'')} – ${esc(v.temp_inactive_until||'')}`) : ''), 'editVolunteer', v.id)
+        + (v.status==='temporary_inactive' ? fieldRow('info','Away', esc(awayLabel(v).replace(/^Away /,''))) : ''), 'editVolunteer', v.id)
     + (v.private_note ? section('note', 'Note', `<div class="fval" style="white-space:pre-line;">${esc(v.private_note)}</div>`, 'editVolunteer', v.id) : '')
     + `</div>` + requestsSection(reqs, 'volunteer', v.id) + recordMeta(v);
 }
@@ -1531,7 +1560,7 @@ function driverDetail(){
   const d = byId(state.drivers, state.routeId); if(!d) return `<div class="empty">Driver not found.</div>`;
   const reqs = state.requests.filter(r=>r.pickup_driver_id===d.id || r.return_driver_id===d.id);
   return hero(d.name, statusBadgePlain(d.status) + (d.contact_sms ? `<span class="badge plain badge-white">SMS</span>` : '') + (d.contact_whatsapp ? `<span class="badge plain badge-white">WhatsApp</span>` : '') + (d.needs_approval ? `<span class="badge plain badge-white">Needs approval</span>` : ''), 'editDriver', d.id)
-    + `<div class="profile-grid">` + section('user', 'Contact Information', fieldRow('user','Name',esc(d.name)) + fieldRow('phone','Phone',telLink(d.phone)) + fieldRow('mail','Email', d.email ? `<a href="mailto:${esc(d.email)}">${esc(d.email)}</a>` : '') + fieldRow('pin','Address',mapLink(d.address)), 'editDriver', d.id)
+    + `<div class="profile-grid">` + section('user', 'Contact Information', fieldRow('user','Name',esc(d.name)) + fieldRow('phone','Main phone',telLink(d.phone)) + (d.phone2 ? fieldRow('phone','Other phone',telLink(d.phone2)) : '') + fieldRow('mail','Email', d.email ? `<a href="mailto:${esc(d.email)}">${esc(d.email)}</a>` : '') + fieldRow('pin','Address',mapLink(d.address)), 'editDriver', d.id)
     + (d.private_note ? section('note', 'Note', `<div class="fval" style="white-space:pre-line;">${esc(d.private_note)}</div>`, 'editDriver', d.id) : '')
     + `</div>` + requestsSection(reqs, 'driver', d.id) + recordMeta(d);
 }
@@ -1717,7 +1746,12 @@ function everyone(){
   return PEOPLE_KINDS.flatMap(([kind])=> (state[kind+'s']||[]).filter(p=>normPhone(p.phone).length===10)
     .map(p=>({kind, id:p.id, name:p.name, phone:normPhone(p.phone), status:p.status||'active'})));
 }
-function whoIs(phone){ const n = normPhone(phone); return everyone().find(p=>p.phone===n) || null; }
+function whoIs(phone){
+  const n = normPhone(phone), hit = everyone().find(p=>p.phone===n);
+  if(hit) return hit;
+  for(const [kind] of PEOPLE_KINDS){ const p = (state[kind+'s']||[]).find(x=>x.phone2 && normPhone(x.phone2)===n); if(p) return {kind, id:p.id, name:p.name, phone:n, status:p.status||'active'}; }
+  return null;
+}
 function personByRef(m){
   if(m.kind==='phone') return {kind:'phone', phone:normPhone(m.phone), name:fmtPhone(m.phone)};
   const p = byId(state[m.kind+'s']||[], m.id);
@@ -2176,7 +2210,8 @@ function personFormModal(kind, id){
   if(kind==='client'){
     fields = `
       <div class="field"><label>Name</label><input data-bind="name" value="${esc(state.draft.name||'')}"></div>
-      <div class="field"><label>Phone</label><input data-bind="phone" type="tel" value="${esc(state.draft.phone||'')}"></div>
+      <div class="field"><label>Main phone</label><input data-bind="phone" type="tel" value="${esc(state.draft.phone||'')}"></div>
+      <div class="field"><label>Other phone</label><input data-bind="phone2" type="tel" value="${esc(state.draft.phone2||'')}"></div>
       <div class="toggle"><span>Mashilach</span><div class="switch ${state.draft.is_mashilach?'on':''}" data-action="toggle-mashilach"><div class="knob"></div></div></div>
       ${addressFields('draft')}
       ${notesFields()}
@@ -2186,7 +2221,8 @@ function personFormModal(kind, id){
     const days = state.draft.available_days || [];
     fields = `
       <div class="field"><label>Name</label><input data-bind="name" value="${esc(state.draft.name||'')}"></div>
-      <div class="field"><label>Phone</label><input data-bind="phone" type="tel" value="${esc(state.draft.phone||'')}"></div>
+      <div class="field"><label>Main phone</label><input data-bind="phone" type="tel" value="${esc(state.draft.phone||'')}"></div>
+      <div class="field"><label>Other phone</label><input data-bind="phone2" type="tel" value="${esc(state.draft.phone2||'')}"></div>
       ${addressFields('draft')}
       ${notesFields()}
       <label>Available days</label>
@@ -2208,7 +2244,8 @@ function personFormModal(kind, id){
   } else if(kind==='driver'){
     fields = `
       <div class="field"><label>Name</label><input data-bind="name" value="${esc(state.draft.name||'')}"></div>
-      <div class="field"><label>Phone</label><input data-bind="phone" type="tel" value="${esc(state.draft.phone||'')}"></div>
+      <div class="field"><label>Main phone</label><input data-bind="phone" type="tel" value="${esc(state.draft.phone||'')}"></div>
+      <div class="field"><label>Other phone</label><input data-bind="phone2" type="tel" value="${esc(state.draft.phone2||'')}"></div>
       <div class="field"><label>Email</label><input data-bind="email" type="email" value="${esc(state.draft.email||'')}"></div>
       ${addressFields('draft')}
       <div class="field"><label>Note</label><textarea data-bind="private_note" rows="2">${esc(state.draft.private_note||'')}</textarea></div>
@@ -2242,15 +2279,21 @@ const KIND_FOR_FIELD = { client_id:'client', volunteer_id:'volunteer', volunteer
 function pickerResults(field){
   const kind = kindOf(field);
   const q = state.pickerSearch[field] || '';
-  let list = state[kind+'s'].filter(p => !['inactive','suspended'].includes(p.status) && matchesSearch(p, q));
+  // away volunteers (temporarily inactive right now) aren't offered
+  let list = state[kind+'s'].filter(p => !['inactive','suspended'].includes(p.status) && !(kind==='volunteer' && isAway(p)) && matchesSearch(p, q));
   list = kind==='volunteer' ? sortPeople(list, 'volunteer', state.volSort, state.volDays) : list.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const sub = p => kind==='volunteer' ? volunteerSub(p) : kind==='driver'
-    ? [p.phone, p.contact_sms && 'SMS', p.contact_whatsapp && 'WhatsApp'].filter(Boolean).join(' · ')
-    : [p.address, p.phone].filter(Boolean).join(' · ');
+    ? [p.contact_sms && 'SMS', p.contact_whatsapp && 'WhatsApp'].filter(Boolean).join(' · ')
+    : p.address || '';
+  const naToday = v => v.unavailable_at && localDay(v.unavailable_at).getTime() === localDay(new Date()).getTime();
   return `<div class="picker-list">
     ${list.slice(0, 30).map(p=>`<div class="picker-item" data-action="pick" data-field="${field}" data-value="${p.id}">
-      <div>${kind==='volunteer' ? `<span class="dot ${volunteerReadiness(p)}" style="margin-right:6px;"></span>` : ''}<b>${esc(p.name)}</b>${kind==='volunteer' && state.volDays.length && daysLabel(p, state.volDays) ? ` <span class="tag">Available ${daysLabel(p, state.volDays)}</span>` : ''}<div class="sub">${esc(sub(p))}</div></div>
-      <span class="sub">Select</span>
+      <div>${kind==='volunteer' ? `<span class="dot ${volunteerReadiness(p)}" style="margin-right:6px;"></span>` : ''}<span class="name-link" data-nav="${kind}" data-id="${p.id}">${esc(p.name)}</span>${kind==='volunteer' && state.volDays.length && daysLabel(p, state.volDays) ? ` <span class="tag">Available ${daysLabel(p, state.volDays)}</span>` : ''}${kind==='volunteer' && p.status==='temporary_inactive' ? ` <span class="tag gray">${esc(awayLabel(p))}</span>` : ''}
+        ${sub(p) ? `<div class="sub">${esc(sub(p))}</div>` : ''}${p.phone || p.phone2 ? `<div class="sub picker-phones">${icon('phone')} ${phonesHtml(p)}</div>` : ''}</div>
+      <div class="picker-right">
+        ${kind==='volunteer' ? `<button class="na-btn ${naToday(p) ? 'on' : ''}" data-action="vol-unavailable" data-id="${p.id}" title="Not available" aria-label="Not available">${icon('x')}<span>${naToday(p) ? 'Not available today' : 'Not available'}</span></button>` : ''}
+        <span class="sub">Select</span>
+      </div>
     </div>`).join('')}
     ${list.length===0 ? `<div class="picker-item sub">No ${kind}s match "${esc(q)}"</div>` : ''}
     <div class="picker-item picker-add" data-action="push-person" data-kind="${kind}" data-field="${field}">+ Add new ${kind}${q ? ` "${esc(q)}"` : ''}</div>
@@ -2480,7 +2523,8 @@ function initEvents(){
     if(navEl && (!actionEl || actionEl.contains(navEl))){
       const r = navEl.getAttribute('data-nav');
       if(navEl.classList.contains('nav-item')) state.navStack = [];
-      else if(['client','volunteer','driver'].includes(r)) state.navStack.push({route: state.route, routeId: state.routeId});
+      else if(['client','volunteer','driver'].includes(r)) state.navStack.push({route: state.route, routeId: state.routeId,
+        ...(state.modal ? {modal: state.modal, draft: state.draft, modalStack: state.modalStack, pickerSearch: state.pickerSearch} : {})});
       state.route = r; state.routeId = navEl.getAttribute('data-id')||null; state.menuOpen=false; state.modal=null; state.draft={}; state.modalStack=[];
       render(); window.scrollTo(0,0); return;
     }
@@ -2520,6 +2564,13 @@ function initEvents(){
       case 'practice-start': if(confirm('Practice mode: you get a private copy of everything to try things out. Nothing you do is saved or seen by other dispatchers. Start?')) await startPractice(true); break;
       case 'practice-reset': if(confirm('Start the practice over with a fresh copy of the real data?')) await startPractice(true); break;
       case 'practice-exit': await exitPractice(); break;
+      case 'vol-unavailable': {
+        const id = actionEl.getAttribute('data-id'), v = byId(state.volunteers, id);
+        const today = v.unavailable_at && localDay(v.unavailable_at).getTime() === localDay(new Date()).getTime();
+        // tapping again the same day takes it back
+        if(await updateVolunteer(id, {unavailable_at: today ? null : new Date().toISOString()})){ showToast(today ? `${v.name} is back in place` : `${v.name} moved down the list`); }
+        break;
+      }
       case 'msg-tab': state.msgTab = actionEl.getAttribute('data-tab'); render(); break;
       case 'open-thread': {
         const phone = actionEl.getAttribute('data-phone');
@@ -2587,7 +2638,8 @@ function initEvents(){
       case 'go-dispatch': state.route = 'dispatch'; if(actionEl.getAttribute('data-tab')) state.dispatchTab = actionEl.getAttribute('data-tab'); state.navStack = []; render(); window.scrollTo(0,0); break;
       case 'go-back': {
         const prev = state.navStack.pop();
-        if(prev){ state.route = prev.route; state.routeId = prev.routeId; }
+        if(prev){ state.route = prev.route; state.routeId = prev.routeId;
+          if(prev.modal){ state.modal = prev.modal; state.draft = prev.draft; state.modalStack = prev.modalStack || []; state.pickerSearch = prev.pickerSearch || {}; } }
         else { state.route = state.route + 's'; state.routeId = null; } // e.g. client -> clients
         render(); window.scrollTo(0,0); break;
       }
@@ -2946,16 +2998,16 @@ async function saveEditRequest(id){
 }
 async function savePerson(kind, id){
   const COLS = {
-    client: ['name','phone','address','note','private_note','is_mashilach','status'],
-    volunteer: ['name','phone','address','note','private_note','status','temp_inactive_from','temp_inactive_until','bag_capacity','wash_frequency','available_days'],
-    driver: ['name','phone','email','address','private_note','contact_sms','contact_whatsapp','status', ...(isEditor() ? ['needs_approval'] : [])],
+    client: ['name','phone','phone2','address','note','private_note','is_mashilach','status'],
+    volunteer: ['name','phone','phone2','address','note','private_note','status','temp_inactive_from','temp_inactive_until','bag_capacity','wash_frequency','available_days'],
+    driver: ['name','phone','phone2','email','address','private_note','contact_sms','contact_whatsapp','status', ...(isEditor() ? ['needs_approval'] : [])],
   }[kind];
   const d = {};
   for(const k of COLS){ if(k in state.draft){ const val = state.draft[k]; d[k] = (typeof val==='string' && val.trim()==='') ? null : (typeof val==='string' ? val.trim() : val); } }
   if(!d.name){ showToast('Name is required'); return; }
   if(!(await confirmAddress('draft'))) return;
   if(kind==='volunteer' && d.status!=='temporary_inactive'){ d.temp_inactive_from = null; d.temp_inactive_until = null; }
-  if(kind==='volunteer' && d.status==='temporary_inactive' && !d.temp_inactive_until){ showToast('Pick the "Until" date'); return; }
+  if(kind==='volunteer' && d.temp_inactive_from && d.temp_inactive_until && d.temp_inactive_until < d.temp_inactive_from){ showToast('"Until" is before "From"'); return; }
   let saved = null;
   if(kind==='client'){ saved = id ? await updateClient(id, d) : await createClient(d); }
   if(kind==='volunteer'){ saved = id ? await updateVolunteer(id, d) : await createVolunteer(d); }
