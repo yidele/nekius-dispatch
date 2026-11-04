@@ -931,8 +931,8 @@ function topCard(kind){
   });
   const sorted = Object.entries(counts).map(([id,n])=>[byId(state[kind+'s'], id), n]).filter(([p])=>p)
     .sort((a,b)=> b[1]-a[1] || a[0].name.localeCompare(b[0].name));
-  // top 10, plus anyone tied with the 10th
-  const rows = sorted.filter(([,n], i)=> i < 10 || (sorted[9] && n === sorted[9][1]));
+  // the Dashboard shows the top 10; the weekly page has everyone
+  const rows = sorted.slice(0, 10);
   return `<div class="section-card">
     <div class="section-head"><div class="section-name top-open" data-action="open-weekly" data-kind="${kind}"><div class="icn">${icon(kind)}</div><h3>Top ${kind}s</h3></div>
       <a class="clear-all" data-action="open-weekly" data-kind="${kind}">This week ${icon('chev')}</a></div>
