@@ -312,6 +312,19 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .stat-lines b{color:var(--ink);}
 .top-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;}
 .top-grid .section-card{margin-top:0;}
+.top-open{cursor:pointer;}
+.week-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-m);padding:6px 8px;}
+.week-nav button:disabled{opacity:.3;cursor:default;}
+.week-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line);}
+.week-row:first-child{border-top:none;}
+.week-head{font-size:11.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-faint);padding-top:0;}
+.week-row .rank{width:26px;height:26px;border-radius:50%;background:var(--surface-2);color:var(--ink-soft);font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
+.week-head .rank{background:none;}
+.week-row .rank.first{background:var(--primary);color:#fff;}
+.week-row .wname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.week-row .wnum{width:84px;text-align:right;flex-shrink:0;}
+.week-row .wnum b{font-size:17px;color:var(--primary-dark);}
+.week-row .wnum.all{color:var(--ink-soft);font-weight:600;}
 .top-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);}
 .top-row .name-link{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .top-row .rank{width:22px;height:22px;border-radius:50%;background:var(--surface-2);color:var(--ink-soft);font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
@@ -472,6 +485,7 @@ const state = {
   expanded: {},           // finished requests opened from their one-line view
   volSort: 'rotation', volDays: [],
   navStack: [],           // where to go back to from a profile page
+  weekly: {kind:'driver', offset:0},
   contacts: [], lists: [], messages: [], posts: [], postNumbers: [], offers: [],
   msgTab: 'inbox', msgPhone: null, msgSearch: '', msgCompose: {}, msgContactSearch: '', msgContactKind: '',
 };
@@ -821,7 +835,7 @@ function layout(innerHtml){
     </div></div>`;
   }
   if(state.loading){ return `<div class="header"><span class="title">Kvisa Dispatch</span></div><div class="main"><div class="empty">Loading…</div></div>`; }
-  const titles = {dashboard:'Dashboard',dispatch:'Dispatch',clients:'Clients',volunteers:'Volunteers',drivers:'Drivers',history:'Request History',recurring:'Recurring Requests',messages:'Messages',settings:'Settings',client:'Client Details',volunteer:'Volunteer Details',driver:'Driver Details'};
+  const titles = {dashboard:'Dashboard',dispatch:'Dispatch',clients:'Clients',volunteers:'Volunteers',drivers:'Drivers',history:'Request History',recurring:'Recurring Requests',messages:'Messages',weekly:'Top this week',settings:'Settings',client:'Client Details',volunteer:'Volunteer Details',driver:'Driver Details'};
   // the round + button hides while a filter panel is open so it can't cover the panel's buttons
   const fab = state.filterOpen[state.route] ? null
     : {clients:'addClient', volunteers:'addVolunteer', drivers:'addDriver', recurring: isEditor() ? 'recurringForm' : null}[state.route];
@@ -915,17 +929,20 @@ function topCard(kind){
   state.requests.filter(r=>inPeriod(r.requested_for || r.created_at, cfg.period, cfg.from, cfg.to)).forEach(r=>{
     creditedIds(r, kind).forEach(id => counts[id] = (counts[id]||0) + 1);
   });
-  const rows = Object.entries(counts).map(([id,n])=>[byId(state[kind+'s'], id), n]).filter(([p])=>p)
-    .sort((a,b)=> b[1]-a[1] || a[0].name.localeCompare(b[0].name)).slice(0,10);
+  const sorted = Object.entries(counts).map(([id,n])=>[byId(state[kind+'s'], id), n]).filter(([p])=>p)
+    .sort((a,b)=> b[1]-a[1] || a[0].name.localeCompare(b[0].name));
+  // top 10, plus anyone tied with the 10th
+  const rows = sorted.filter(([,n], i)=> i < 10 || (sorted[9] && n === sorted[9][1]));
   return `<div class="section-card">
-    <div class="section-head"><div class="section-name"><div class="icn">${icon(kind)}</div><h3>Top ${kind}s</h3></div></div>
+    <div class="section-head"><div class="section-name top-open" data-action="open-weekly" data-kind="${kind}"><div class="icn">${icon(kind)}</div><h3>Top ${kind}s</h3></div>
+      <a class="clear-all" data-action="open-weekly" data-kind="${kind}">This week ${icon('chev')}</a></div>
     <div class="chip-row">${PERIODS.map(([k,l])=>`<div class="chip ${cfg.period===k?'active':''}" data-action="set-top-period" data-kind="${kind}" data-period="${k}">${l}</div>`).join('')}</div>
     ${cfg.period==='custom' ? `<div class="range-row">
       <div><label>From</label><input type="date" data-topdate="${kind}.from" value="${esc(cfg.from)}"></div>
       <div><label>To</label><input type="date" data-topdate="${kind}.to" value="${esc(cfg.to)}"></div>
     </div>` : ''}
     <div style="margin-top:10px;">
-      ${rows.length ? rows.map(([p,n],i)=>`<div class="top-row"><span class="rank">${i+1}</span><span class="name-link" data-nav="${kind}" data-id="${p.id}">${esc(p.name)}</span><span class="count-pill">${n}</span></div>`).join('')
+      ${rows.length ? rows.map(([p,n],i)=>`<div class="top-row"><span class="rank">${rows.findIndex(x=>x[1]===n)+1}</span><span class="name-link" data-nav="${kind}" data-id="${p.id}">${esc(p.name)}</span><span class="count-pill">${n}</span></div>`).join('')
         : `<div class="empty" style="padding:14px;">&mdash;</div>`}
     </div>
   </div>`;
@@ -1578,6 +1595,100 @@ function driverDetail(){
     + `</div>` + requestsSection(reqs, 'driver', d.id) + recordMeta(d);
 }
 
+/* ============================= Weekly list (Top drivers / volunteers) ============================= */
+// everyone who did a call in a week (Sunday to Saturday), for posting in the group on Friday
+function weekRange(offset){
+  const t = new Date(), start = new Date(t.getFullYear(), t.getMonth(), t.getDate() - t.getDay() + offset * 7);
+  const end = new Date(start); end.setDate(start.getDate() + 7);
+  return [start, end];
+}
+function weekTitle(offset){
+  const [a, b] = weekRange(offset), last = new Date(b.getTime() - 86400000);
+  const f = d => d.toLocaleDateString('en-US', {month:'short', day:'numeric'});
+  return offset === 0 ? `This week · ${f(a)} – ${f(last)}` : `Week of ${f(a)} – ${f(last)}`;
+}
+function weeklyRows(kind, offset){
+  const [a, b] = weekRange(offset), counts = {};
+  state.requests.forEach(r=>{
+    const d = new Date(r.requested_for || r.created_at);
+    if(d >= a && d < b) creditedIds(r, kind).forEach(id => counts[id] = (counts[id]||0) + 1);
+  });
+  const rows = Object.entries(counts).map(([id, week])=>({p: byId(state[kind+'s'], id), week})).filter(x=>x.p)
+    .map(x=>({...x, all: completedCount(kind, x.p.id)}))
+    .sort((x, y)=> y.week - x.week || y.all - x.all || x.p.name.localeCompare(y.p.name));
+  // the same number this week shares the same place
+  rows.forEach(x=> x.rank = rows.findIndex(y=>y.week === x.week) + 1);
+  return rows;
+}
+function weeklyPage(){
+  const {kind, offset} = state.weekly, rows = weeklyRows(kind, offset);
+  return `<div class="page-head"><h2>Top ${kind}s</h2></div>
+    <div class="chip-row" style="margin-bottom:12px;">
+      ${['driver','volunteer'].map(k=>`<div class="chip ${kind===k?'active':''}" data-action="weekly-kind" data-kind="${k}">${k==='driver' ? 'Drivers' : 'Volunteers'}</div>`).join('')}
+    </div>
+    <div class="week-nav">
+      <button class="icon-btn" data-action="weekly-week" data-step="-1" aria-label="Week before">${icon('back')}</button>
+      <b>${esc(weekTitle(offset))}</b>
+      <button class="icon-btn" data-action="weekly-week" data-step="1" aria-label="Week after" ${offset >= 0 ? 'disabled' : ''} style="transform:scaleX(-1);">${icon('back')}</button>
+    </div>
+    <div class="btn-row" style="margin:12px 0;">
+      <button class="btn btn-primary" data-action="weekly-share" ${rows.length ? '' : 'disabled'}>${icon('send')} Share</button>
+      <button class="btn btn-outline" data-action="weekly-copy" ${rows.length ? '' : 'disabled'}>${icon('copy')} Copy text</button>
+    </div>
+    <div class="section-card" style="margin-top:0;">
+      ${rows.length ? `<div class="week-row week-head"><span class="rank"></span><span class="wname"></span><span class="wnum">This week</span><span class="wnum">All time</span></div>
+        ${rows.map(x=>`<div class="week-row"><span class="rank ${x.rank===1?'first':''}">${x.rank}</span><span class="wname name-link" data-nav="${kind}" data-id="${x.p.id}">${esc(x.p.name)}</span><span class="wnum"><b>${x.week}</b></span><span class="wnum all">${x.all}</span></div>`).join('')}`
+        : `<div class="empty" style="padding:14px;">&mdash;</div>`}
+    </div>`;
+}
+function weeklyText(){
+  const {kind, offset} = state.weekly, rows = weeklyRows(kind, offset);
+  return [`KVISA · Top ${kind}s`, weekTitle(offset), '', ...rows.map(x=>`${x.rank}. ${x.p.name} — ${x.week} this week · ${x.all} all time`)].join('\n');
+}
+// a picture of the list, ready for the WhatsApp group
+async function weeklyPicture(withLogo = true){
+  const {kind, offset} = state.weekly, rows = weeklyRows(kind, offset);
+  const W = 1080, rowH = 76, top = 300, H = top + rows.length * rowH + 90;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  try{ await document.fonts.ready; }catch(_){}
+  g.fillStyle = '#F5F7F3'; g.fillRect(0, 0, W, H);
+  g.fillStyle = '#FFFFFF'; roundRect(g, 40, 40, W - 80, H - 80, 36); g.fill();
+  const logo = withLogo ? await new Promise(res=>{ const im = new Image(); im.onload = ()=>res(im); im.onerror = ()=>res(null); im.src = 'logo.png'; }) : null;
+  if(logo){ const h = 90, w = logo.width * h / logo.height; g.drawImage(logo, 90, 80, w, h); }
+  g.fillStyle = '#123B33'; g.font = '700 54px "Space Grotesk", system-ui, sans-serif'; g.textAlign = 'right';
+  g.fillText(`Top ${kind}s`, W - 90, 135);
+  g.fillStyle = '#57685D'; g.font = '500 30px Inter, system-ui, sans-serif'; g.fillText(weekTitle(offset), W - 90, 180);
+  const cWeek = W - 330, cAll = W - 110;
+  g.font = '700 24px Inter, system-ui, sans-serif'; g.fillStyle = '#8C978C';
+  g.fillText('THIS WEEK', cWeek, top - 30); g.fillText('ALL TIME', cAll, top - 30);
+  rows.forEach((x, i)=>{
+    const y = top + i * rowH, mid = y + rowH / 2 + 11;
+    g.strokeStyle = '#DEE5DA'; g.lineWidth = 2; g.beginPath(); g.moveTo(90, y); g.lineTo(W - 90, y); g.stroke();
+    g.fillStyle = x.rank === 1 ? '#1F5C50' : '#EEF2EA'; g.beginPath(); g.arc(122, y + rowH / 2, 24, 0, Math.PI * 2); g.fill();
+    g.fillStyle = x.rank === 1 ? '#FFFFFF' : '#57685D'; g.font = '800 24px Inter, system-ui, sans-serif'; g.textAlign = 'center'; g.fillText(String(x.rank), 122, mid - 2);
+    g.textAlign = 'left'; g.fillStyle = '#17251E'; g.font = '600 32px Inter, system-ui, sans-serif';
+    let name = x.p.name; while(g.measureText(name).width > cWeek - 400 && name.length > 3) name = name.slice(0, -2);
+    g.fillText(name === x.p.name ? name : name + '…', 170, mid);
+    g.textAlign = 'right'; g.fillStyle = '#1F5C50'; g.font = '800 34px Inter, system-ui, sans-serif'; g.fillText(String(x.week), cWeek, mid);
+    g.fillStyle = '#57685D'; g.font = '600 30px Inter, system-ui, sans-serif'; g.fillText(String(x.all), cAll, mid);
+  });
+  // if the logo can't be used in a picture (a browser safety rule), make it without the logo
+  try{ return await new Promise(res=>c.toBlob(res, 'image/png')); }catch(_){ return withLogo ? weeklyPicture(false) : null; }
+}
+function roundRect(g, x, y, w, h, r){ g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+async function shareWeekly(){
+  const blob = await weeklyPicture(); if(!blob){ showToast('Could not make the picture'); return; }
+  const name = `kvisa-top-${state.weekly.kind}s.png`, file = new File([blob], name, {type:'image/png'});
+  // phones and iPads open the share sheet (choose WhatsApp, then the group); computers save the picture
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file], title:`KVISA · Top ${state.weekly.kind}s`}); }catch(_){}
+    return;
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  showToast('Picture saved');
+}
+
 /* ============================= Recurring requests ============================= */
 function isEditor(){ return state.profile?.role === 'editor'; }
 function fmtTime(t){ if(!t) return ''; const [h,m] = t.split(':').map(Number); return new Date(2000,0,1,h,m).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
@@ -2180,7 +2291,7 @@ function contactFormModal(){
       <button class="btn btn-primary" data-action="save-contact">Save</button></div>`;
 }
 
-const routes = { messages: messagesPage, dashboard, dispatch, clients, volunteers, drivers, recurring, history: historyPage, settings, client: clientDetail, volunteer: volunteerDetail, driver: driverDetail };
+const routes = { weekly: weeklyPage, messages: messagesPage, dashboard, dispatch, clients, volunteers, drivers, recurring, history: historyPage, settings, client: clientDetail, volunteer: volunteerDetail, driver: driverDetail };
 
 /* ============================= Modals ============================= */
 function modalHtml(){
@@ -2584,6 +2695,11 @@ function initEvents(){
         if(await updateVolunteer(id, {unavailable_at: today ? null : new Date().toISOString()})){ showToast(today ? `${v.name} is back in place` : `${v.name} moved down the list`); }
         break;
       }
+      case 'open-weekly': state.weekly = {kind: actionEl.getAttribute('data-kind'), offset: 0}; state.route = 'weekly'; state.navStack = []; render(); window.scrollTo(0,0); break;
+      case 'weekly-kind': state.weekly.kind = actionEl.getAttribute('data-kind'); render(); break;
+      case 'weekly-week': state.weekly.offset = Math.min(0, state.weekly.offset + Number(actionEl.getAttribute('data-step'))); render(); break;
+      case 'weekly-share': await shareWeekly(); break;
+      case 'weekly-copy': copyToClipboard(weeklyText()); break;
       case 'msg-tab': state.msgTab = actionEl.getAttribute('data-tab'); render(); break;
       case 'open-thread': {
         const phone = actionEl.getAttribute('data-phone');
