@@ -930,7 +930,7 @@ function topCard(kind){
     creditedIds(r, kind).forEach(id => counts[id] = (counts[id]||0) + 1);
   });
   const sorted = Object.entries(counts).map(([id,n])=>[byId(state[kind+'s'], id), n]).filter(([p])=>p)
-    .sort((a,b)=> b[1]-a[1] || a[0].name.localeCompare(b[0].name));
+    .sort((a,b)=> b[1]-a[1] || completedCount(kind, b[0].id) - completedCount(kind, a[0].id) || a[0].name.localeCompare(b[0].name));
   // the Dashboard shows the top 10; the weekly page has everyone
   const rows = sorted.slice(0, 10);
   return `<div class="section-card">
@@ -942,7 +942,7 @@ function topCard(kind){
       <div><label>To</label><input type="date" data-topdate="${kind}.to" value="${esc(cfg.to)}"></div>
     </div>` : ''}
     <div style="margin-top:10px;">
-      ${rows.length ? rows.map(([p,n],i)=>`<div class="top-row"><span class="rank">${rows.findIndex(x=>x[1]===n)+1}</span><span class="name-link" data-nav="${kind}" data-id="${p.id}">${esc(p.name)}</span><span class="count-pill">${n}</span></div>`).join('')
+      ${rows.length ? rows.map(([p,n],i)=>`<div class="top-row"><span class="rank">${i+1}</span><span class="name-link" data-nav="${kind}" data-id="${p.id}">${esc(p.name)}</span><span class="count-pill">${n}</span></div>`).join('')
         : `<div class="empty" style="padding:14px;">&mdash;</div>`}
     </div>
   </div>`;
@@ -1616,8 +1616,8 @@ function weeklyRows(kind, offset){
   const rows = Object.entries(counts).map(([id, week])=>({p: byId(state[kind+'s'], id), week})).filter(x=>x.p)
     .map(x=>({...x, all: completedCount(kind, x.p.id)}))
     .sort((x, y)=> y.week - x.week || y.all - x.all || x.p.name.localeCompare(y.p.name));
-  // the same number this week shares the same place
-  rows.forEach(x=> x.rank = rows.findIndex(y=>y.week === x.week) + 1);
+  // places go 1, 2, 3 … with no repeats; the same number this week is ordered by all-time calls, then name
+  rows.forEach((x, i)=> x.rank = i + 1);
   return rows;
 }
 function weeklyPage(){
@@ -1643,7 +1643,7 @@ function weeklyPage(){
 }
 function weeklyText(){
   const {kind, offset} = state.weekly, rows = weeklyRows(kind, offset);
-  return [`KVISA · Top ${kind}s`, weekTitle(offset), '', ...rows.map(x=>`${x.rank}. ${x.p.name} — ${x.week} this week · ${x.all} all time`)].join('\n');
+  return [`KVISA · Top ${kind}s`, weekTitle(offset), '', ...rows.map(x=>`${x.rank}. ${x.p.name} — ${x.week}`)].join('\n');
 }
 // a picture of the list, ready for the WhatsApp group
 async function weeklyPicture(withLogo = true){
@@ -1659,19 +1659,19 @@ async function weeklyPicture(withLogo = true){
   g.fillStyle = '#123B33'; g.font = '700 54px "Space Grotesk", system-ui, sans-serif'; g.textAlign = 'right';
   g.fillText(`Top ${kind}s`, W - 90, 135);
   g.fillStyle = '#57685D'; g.font = '500 30px Inter, system-ui, sans-serif'; g.fillText(weekTitle(offset), W - 90, 180);
-  const cWeek = W - 330, cAll = W - 110;
+  // the posted picture shows this week's calls only
+  const cWeek = W - 110;
   g.font = '700 24px Inter, system-ui, sans-serif'; g.fillStyle = '#8C978C';
-  g.fillText('THIS WEEK', cWeek, top - 30); g.fillText('ALL TIME', cAll, top - 30);
+  g.fillText('CALLS THIS WEEK', cWeek, top - 30);
   rows.forEach((x, i)=>{
     const y = top + i * rowH, mid = y + rowH / 2 + 11;
     g.strokeStyle = '#DEE5DA'; g.lineWidth = 2; g.beginPath(); g.moveTo(90, y); g.lineTo(W - 90, y); g.stroke();
     g.fillStyle = x.rank === 1 ? '#1F5C50' : '#EEF2EA'; g.beginPath(); g.arc(122, y + rowH / 2, 24, 0, Math.PI * 2); g.fill();
     g.fillStyle = x.rank === 1 ? '#FFFFFF' : '#57685D'; g.font = '800 24px Inter, system-ui, sans-serif'; g.textAlign = 'center'; g.fillText(String(x.rank), 122, mid - 2);
     g.textAlign = 'left'; g.fillStyle = '#17251E'; g.font = '600 32px Inter, system-ui, sans-serif';
-    let name = x.p.name; while(g.measureText(name).width > cWeek - 400 && name.length > 3) name = name.slice(0, -2);
+    let name = x.p.name; while(g.measureText(name).width > cWeek - 320 && name.length > 3) name = name.slice(0, -2);
     g.fillText(name === x.p.name ? name : name + '…', 170, mid);
     g.textAlign = 'right'; g.fillStyle = '#1F5C50'; g.font = '800 34px Inter, system-ui, sans-serif'; g.fillText(String(x.week), cWeek, mid);
-    g.fillStyle = '#57685D'; g.font = '600 30px Inter, system-ui, sans-serif'; g.fillText(String(x.all), cAll, mid);
   });
   // if the logo can't be used in a picture (a browser safety rule), make it without the logo
   try{ return await new Promise(res=>c.toBlob(res, 'image/png')); }catch(_){ return withLogo ? weeklyPicture(false) : null; }
