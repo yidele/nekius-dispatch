@@ -324,7 +324,8 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .week-row .wname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .week-row .wnum{width:84px;text-align:right;flex-shrink:0;}
 .week-row .wnum b{font-size:17px;color:var(--primary-dark);}
-.week-row .wnum.all{color:var(--ink-soft);font-weight:600;}
+.week-row .wnum.wide{width:140px;}
+.back-top{margin-right:-4px;}
 .top-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);}
 .top-row .name-link{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .top-row .rank{width:22px;height:22px;border-radius:50%;background:var(--surface-2);color:var(--ink-soft);font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
@@ -504,6 +505,23 @@ const TAB_LABELS = { todo:'To Do', posted_pickup:'Posted · Pickup', posted_retu
 // as long as you're still looking at the same thing; opening something new starts at its top
 const SCROLLERS = ['.modal', '.picker-list', '.conv-list', '.to-results', '.drawer-nav', '.bubbles'];
 let lastViewKey = '';
+// page history for the ← back arrow: every change of page is remembered (a tapped name inside a window
+// remembers the window too, see the nav handler), and ← steps back through it
+let lastPage = null;
+function notePageChange(){
+  if(!state.session || !state.profile || state.loading){ lastPage = null; return; }
+  const here = {route: state.route, routeId: state.routeId};
+  if(lastPage && (lastPage.route !== here.route || lastPage.routeId !== here.routeId) && !state._navPushed && !state._goingBack){
+    state.navStack.push(lastPage);
+    if(state.navStack.length > 30) state.navStack.shift();
+  }
+  state._navPushed = state._goingBack = false;
+  lastPage = here;
+}
+function pageExists(p){
+  const list = {client:'clients', volunteer:'volunteers', driver:'drivers'}[p.route];
+  return !list || byId(state[list], p.routeId);
+}
 function viewKey(){ return [state.route, state.routeId, state.modal?.type, state.modal?.id, state.modal?.field, state.msgTab, state.msgPhone].join('|'); }
 function render(){
   // remember which box has the cursor so a re-render (e.g. a toast disappearing) doesn't take it away
@@ -513,6 +531,7 @@ function render(){
   const scrolls = {};
   for(const sel of SCROLLERS) document.querySelectorAll(sel).forEach((el, i)=>{ scrolls[sel+i] = {top: el.scrollTop, atBottom: el.scrollHeight - el.scrollTop - el.clientHeight < 40}; });
   const sameView = viewKey() === lastViewKey;
+  notePageChange();
   const r = routes[state.route] || routes.dashboard;
   document.getElementById('app').innerHTML = layout(r());
   lastViewKey = viewKey();
@@ -844,6 +863,7 @@ function layout(innerHtml){
     <div class="shell-main ${state.route==='messages' && state.msgTab==='inbox' ? 'fill' : ''}">
     <div class="header">
       <button class="icon-btn menu-btn" data-action="toggle-menu" aria-label="Menu">${icon('menu')}</button>
+      ${state.navStack.length || ['client','volunteer','driver'].includes(state.route) ? `<button class="icon-btn back-top" data-action="go-back" aria-label="Back">${icon('back')}</button>` : ''}
       <span class="title">${titles[state.route]||'Kvisa Dispatch'}</span>
       <button class="avatar" data-action="open-modal" data-modal="myProfile" title="My profile">${esc(initials(state.profile?.name||state.profile?.email||'?'))}</button>
     </div>
@@ -1636,8 +1656,8 @@ function weeklyPage(){
       <button class="btn btn-outline" data-action="weekly-copy" ${rows.length ? '' : 'disabled'}>${icon('copy')} Copy text</button>
     </div>
     <div class="section-card" style="margin-top:0;">
-      ${rows.length ? `<div class="week-row week-head"><span class="rank"></span><span class="wname"></span><span class="wnum">This week</span><span class="wnum">All time</span></div>
-        ${rows.map(x=>`<div class="week-row"><span class="rank ${x.rank===1?'first':''}">${x.rank}</span><span class="wname name-link" data-nav="${kind}" data-id="${x.p.id}">${esc(x.p.name)}</span><span class="wnum"><b>${x.week}</b></span><span class="wnum all">${x.all}</span></div>`).join('')}`
+      ${rows.length ? `<div class="week-row week-head"><span class="rank"></span><span class="wname"></span><span class="wnum wide">Calls this week</span></div>
+        ${rows.map(x=>`<div class="week-row"><span class="rank ${x.rank===1?'first':''}">${x.rank}</span><span class="wname name-link" data-nav="${kind}" data-id="${x.p.id}">${esc(x.p.name)}</span><span class="wnum wide"><b>${x.week}</b></span></div>`).join('')}`
         : `<div class="empty" style="padding:14px;">&mdash;</div>`}
     </div>`;
 }
@@ -2646,9 +2666,11 @@ function initEvents(){
     // A nav element wins when it is nested inside the action element (e.g. menu items inside the menu overlay)
     if(navEl && (!actionEl || actionEl.contains(navEl))){
       const r = navEl.getAttribute('data-nav');
-      if(navEl.classList.contains('nav-item')) state.navStack = [];
-      else if(['client','volunteer','driver'].includes(r)) state.navStack.push({route: state.route, routeId: state.routeId,
-        ...(state.modal ? {modal: state.modal, draft: state.draft, modalStack: state.modalStack, pickerSearch: state.pickerSearch} : {})});
+      // a name tapped inside a window remembers that window, so ← brings it back
+      if(state.modal && ['client','volunteer','driver'].includes(r)){
+        state.navStack.push({route: state.route, routeId: state.routeId, modal: state.modal, draft: state.draft, modalStack: state.modalStack, pickerSearch: state.pickerSearch});
+        state._navPushed = true;
+      }
       state.route = r; state.routeId = navEl.getAttribute('data-id')||null; state.menuOpen=false; state.modal=null; state.draft={}; state.modalStack=[];
       render(); window.scrollTo(0,0); return;
     }
@@ -2658,7 +2680,7 @@ function initEvents(){
     switch(action){
       case 'toggle-menu': state.menuOpen = !state.menuOpen; render(); break;
       case 'close-menu': if(e.target===actionEl) { state.menuOpen=false; render(); } break;
-      case 'logout': stopLive(); if(inPractice()){ sb = realSb; state.practice = false; try{ localStorage.removeItem(PRACTICE_KEY); }catch(_){} } await sb.auth.signOut(); try{ history.replaceState(null, '', location.pathname); sessionStorage.removeItem('kvisa-view'); }catch(_){} state.session=null; state.profile=null; state.menuOpen=false; state.modal=null; state.draft={}; state.route='dashboard'; state.authMode='login'; state.authError=''; state.authForm={}; state.toast=null; render(); break;
+      case 'logout': state.navStack = []; lastPage = null; stopLive(); if(inPractice()){ sb = realSb; state.practice = false; try{ localStorage.removeItem(PRACTICE_KEY); }catch(_){} } await sb.auth.signOut(); try{ history.replaceState(null, '', location.pathname); sessionStorage.removeItem('kvisa-view'); }catch(_){} state.session=null; state.profile=null; state.menuOpen=false; state.modal=null; state.draft={}; state.route='dashboard'; state.authMode='login'; state.authError=''; state.authForm={}; state.toast=null; render(); break;
       case 'switch-auth': state.authMode = state.authMode==='login'?'signup':'login'; state.authError=''; state.authInfo=''; render(); break;
       case 'do-login': {
         const email = document.getElementById('auth-email').value.trim();
@@ -2695,7 +2717,7 @@ function initEvents(){
         if(await updateVolunteer(id, {unavailable_at: today ? null : new Date().toISOString()})){ showToast(today ? `${v.name} is back in place` : `${v.name} moved down the list`); }
         break;
       }
-      case 'open-weekly': state.weekly = {kind: actionEl.getAttribute('data-kind'), offset: 0}; state.route = 'weekly'; state.navStack = []; render(); window.scrollTo(0,0); break;
+      case 'open-weekly': state.weekly = {kind: actionEl.getAttribute('data-kind'), offset: 0}; state.route = 'weekly'; render(); window.scrollTo(0,0); break;
       case 'weekly-kind': state.weekly.kind = actionEl.getAttribute('data-kind'); render(); break;
       case 'weekly-week': state.weekly.offset = Math.min(0, state.weekly.offset + Number(actionEl.getAttribute('data-step'))); render(); break;
       case 'weekly-share': await shareWeekly(); break;
@@ -2764,12 +2786,15 @@ function initEvents(){
         state.volDays = []; state.volSort = 'rotation'; state.draft.volSearch = ''; state.pickerSearch.volunteer_id = '';
         render(); break;
       case 'set-top-period': state.top[actionEl.getAttribute('data-kind')].period = actionEl.getAttribute('data-period'); render(); break;
-      case 'go-dispatch': state.route = 'dispatch'; if(actionEl.getAttribute('data-tab')) state.dispatchTab = actionEl.getAttribute('data-tab'); state.navStack = []; render(); window.scrollTo(0,0); break;
+      case 'go-dispatch': state.route = 'dispatch'; if(actionEl.getAttribute('data-tab')) state.dispatchTab = actionEl.getAttribute('data-tab'); render(); window.scrollTo(0,0); break;
       case 'go-back': {
-        const prev = state.navStack.pop();
+        let prev = state.navStack.pop();
+        while(prev && !pageExists(prev)) prev = state.navStack.pop(); // skip someone who was deleted since
+        state._goingBack = true;
         if(prev){ state.route = prev.route; state.routeId = prev.routeId;
           if(prev.modal){ state.modal = prev.modal; state.draft = prev.draft; state.modalStack = prev.modalStack || []; state.pickerSearch = prev.pickerSearch || {}; } }
-        else { state.route = state.route + 's'; state.routeId = null; } // e.g. client -> clients
+        else if(['client','volunteer','driver'].includes(state.route)){ state.route = state.route + 's'; state.routeId = null; } // e.g. client -> clients
+        else { state.route = 'dashboard'; state.routeId = null; }
         render(); window.scrollTo(0,0); break;
       }
       case 'toggle-day': {
@@ -2853,7 +2878,7 @@ function initEvents(){
         state.requests.forEach(r=>fields.forEach(f=>{ if(r[f]===id) r[f]=null; }));
         if(kind==='client') state.recurring = state.recurring.filter(t=>t.client_id!==id);
         else state.recurring.forEach(t=>fields.forEach(f=>{ if(t[f]===id) t[f]=null; }));
-        state.route = kind+'s'; state.routeId = null; state.navStack = [];
+        state.route = kind+'s'; state.routeId = null; state._goingBack = true;
         showToast(`${p.name} deleted`); break;
       }
       case 'unassign-recurring': {
@@ -2892,7 +2917,7 @@ function initEvents(){
       }
       case 'go-request': {
         const r = byId(state.requests, Number(actionEl.getAttribute('data-id')));
-        state.route = 'dispatch'; state.dispatchTab = r.status; state.dispatchSearch = String(r.id); state.navStack = [];
+        state.route = 'dispatch'; state.dispatchTab = r.status; state.dispatchSearch = String(r.id);
         render(); window.scrollTo(0,0); break;
       }
       case 'toggle-expand': { const id = actionEl.getAttribute('data-id'); state.expanded[id] = !state.expanded[id]; render(); break; }
